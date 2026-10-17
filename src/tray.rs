@@ -13,7 +13,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 use windows_sys::core::PCWSTR;
 use windows_sys::w;
 
-const MUTEX_NAME: PCWSTR = w!("lgbattery-tray");
+const MUTEX_NAME: PCWSTR = w!("logibattery-tray");
 const POLL_INTERVAL_MS: u32 = 5 * 60 * 1000;
 const LOW_PERCENT: u8 = 20;
 const WM_TRAY: u32 = WM_APP;
@@ -47,7 +47,7 @@ pub fn run() {
         TASKBAR_CREATED.get_or_init(|| RegisterWindowMessageW(w!("TaskbarCreated")));
 
         let instance = GetModuleHandleW(null());
-        let class = w!("lgbattery");
+        let class = w!("logibattery");
         RegisterClassW(&WNDCLASSW {
             lpfnWndProc: Some(window_proc),
             hInstance: instance,

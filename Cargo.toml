@@ -1,5 +1,5 @@
 [package]
-name = "lgbattery"
+name = "logibattery"
 version = "0.1.0"
 edition = "2024"
 description = "Battery level of Logitech devices as CLI and Windows tray icon"

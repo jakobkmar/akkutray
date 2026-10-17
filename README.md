@@ -1,4 +1,4 @@
-# lgbattery
+# logibattery
 
 Shows the battery level of Logitech wireless devices on Windows without Logitech G Hub,
 either on the command line or as a lightweight tray icon.
@@ -15,13 +15,13 @@ Requires the [Rust toolchain](https://rustup.rs/).
 cargo install --path .
 ```
 
-This builds `lgbattery.exe` and puts it in `%USERPROFILE%\.cargo\bin`, which rustup adds to your `PATH`.
-Alternatively run `cargo build --release` and copy `target\release\lgbattery.exe` wherever you like.
+This builds `logibattery.exe` and puts it in `%USERPROFILE%\.cargo\bin`, which rustup adds to your `PATH`.
+Alternatively run `cargo build --release` and copy `target\release\logibattery.exe` wherever you like.
 
 ## Usage
 
 ```
-lgbattery [command]
+logibattery [command]
 
 Commands:
   status  Print the battery level of connected Logitech devices (default)
@@ -32,7 +32,7 @@ Commands:
 ### Command line
 
 ```powershell
-PS> lgbattery
+PS> logibattery
 Signature M650: 85%
 G915 X LS TKL: 99%
 ```
@@ -43,7 +43,7 @@ If no device is found, the exit code is 1.
 ### Tray icon
 
 ```powershell
-lgbattery tray
+logibattery tray
 ```
 
 This starts the tray icon in the background and returns at once. Only one tray icon runs at a time; starting it
@@ -63,7 +63,7 @@ The battery level is updated every 5 minutes and whenever you choose **Refresh**
 
 1. Press <kbd>Win</kbd>+<kbd>R</kbd>, enter `shell:startup` and press Enter.
 2. In the folder that opens, right-click → *New → Shortcut* and enter the target
-   `"%USERPROFILE%\.cargo\bin\lgbattery.exe" tray` (or the path you copied the exe to).
+   `"%USERPROFILE%\.cargo\bin\logibattery.exe" tray` (or the path you copied the exe to).
 
 At login a console window flashes briefly while the tray moves to the background.
 
@@ -86,7 +86,7 @@ The tray is designed to run on a laptop all day:
 ## How it works
 
 Logitech receivers and devices speak the HID++ protocol on a vendor-specific HID interface (usage page `0xFF00`),
-which Windows splits into a collection for short reports and one for long reports. `lgbattery` sends requests to
+which Windows splits into a collection for short reports and one for long reports. `logibattery` sends requests to
 every device slot of every receiver (and to wired devices) and reads the battery status. G Hub talks to the same
 interface, so a distinct software id keeps the responses of both programs apart.
 
