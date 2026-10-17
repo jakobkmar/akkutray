@@ -3,6 +3,7 @@ name = "akkutray"
 version = "0.1.0"
 edition = "2024"
 description = "Battery levels of wireless devices as CLI and Windows tray icon"
+license = "MIT"
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
