@@ -10,6 +10,14 @@ pub enum Kind {
     Other,
 }
 
+/// The way a device is connected to the computer.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Link {
+    Builtin,
+    Usb,
+    Bluetooth,
+}
+
 #[derive(Clone)]
 pub struct Battery {
     pub name: String,
@@ -17,6 +25,7 @@ pub struct Battery {
     pub manufacturer: String,
     /// How the device is connected, e.g. the receiver it is paired with.
     pub connection: String,
+    pub link: Link,
     pub percent: u8,
     pub charging: bool,
 }

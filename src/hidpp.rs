@@ -1,6 +1,6 @@
 //! Minimal HID++ 2.0 client reading the battery state of Logitech devices.
 
-use crate::battery::{Battery, Kind};
+use crate::battery::{Battery, Kind, Link};
 use hidapi::{HidApi, HidDevice};
 use std::time::{Duration, Instant};
 
@@ -89,6 +89,8 @@ impl Channel {
             kind,
             manufacturer: self.manufacturer.clone(),
             connection,
+            // Both the cable and the receivers plug into a USB port.
+            link: Link::Usb,
             percent: status[0],
             charging: matches!(status[2], 1..=3),
         })

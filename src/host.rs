@@ -1,6 +1,6 @@
 //! Battery of the computer itself, e.g. a laptop.
 
-use crate::battery::{Battery, Kind};
+use crate::battery::{Battery, Kind, Link};
 use std::ptr::null_mut;
 use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
@@ -28,6 +28,7 @@ pub fn battery() -> Option<Battery> {
         kind: Kind::Computer,
         manufacturer: firmware_value(w!("SystemManufacturer")).unwrap_or_default(),
         connection: "Built-in battery".into(),
+        link: Link::Builtin,
         percent: status.BatteryLifePercent,
         charging: status.ACLineStatus == AC_ONLINE,
     })

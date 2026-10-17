@@ -1,6 +1,6 @@
 //! Battery levels that Bluetooth devices report to Windows, e.g. headphones via the hands-free profile.
 
-use crate::battery::{Battery, Kind};
+use crate::battery::{Battery, Kind, Link};
 use std::ptr::null_mut;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     CM_GETIDLIST_FILTER_ENUMERATOR, CM_GETIDLIST_FILTER_PRESENT, CM_Get_DevNode_PropertyW, CM_Get_Device_ID_List_SizeW,
@@ -52,6 +52,7 @@ pub fn scan() -> Vec<Battery> {
                 kind: kind(device.class),
                 manufacturer: String::new(),
                 connection: "Bluetooth".into(),
+                link: Link::Bluetooth,
                 percent,
                 // The hands-free profile reports no charging state.
                 charging: false,

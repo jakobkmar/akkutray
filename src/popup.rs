@@ -1,5 +1,6 @@
-use crate::battery::{Battery, Kind};
+use crate::battery::{Battery, Kind, Link};
 use crate::tray::Shared;
+use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
     self, Align, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Key, Layout, Margin, RichText,
     Sense, Vec2, ViewportCommand,
@@ -29,6 +30,8 @@ const KEYBOARD: &str = "\u{e765}";
 const MOUSE: &str = "\u{e962}";
 const HEADSET: &str = "\u{e7f6}";
 const BATTERY: &str = "\u{e83f}";
+const USB: &str = "\u{e88e}";
+const BLUETOOTH: &str = "\u{e702}";
 
 /// Color for a battery level, shared with the tray icon.
 pub fn level_color(percent: u8) -> [u8; 3] {
@@ -247,13 +250,7 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool
                     ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                     let name = RichText::new(&battery.name).family(semibold()).size(14.0);
                     ui.add(egui::Label::new(name.color(palette.text)).wrap());
-                    let source = [battery.manufacturer.as_str(), battery.connection.as_str()];
-                    let source = source
-                        .into_iter()
-                        .filter(|part| !part.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" · ");
-                    ui.add(egui::Label::new(RichText::new(source).size(12.0).color(palette.weak)).wrap());
+                    ui.add(egui::Label::new(source(battery, palette.weak)).wrap());
                     ui.add_space(4.0);
                     state_chip(ui, palette, battery.charging, color);
                 });
@@ -269,6 +266,26 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool
             shimmer(ui, fill);
         }
     });
+}
+
+/// The manufacturer, followed by the connection behind a glyph of its kind, e.g. "Logitech [USB] USB Receiver".
+fn source(battery: &Battery, color: Color32) -> LayoutJob {
+    let text = TextFormat::simple(FontId::proportional(12.0), color);
+    let glyph = TextFormat {
+        valign: Align::Center,
+        ..TextFormat::simple(FontId::new(12.0, icons()), color)
+    };
+    let link = match battery.link {
+        Link::Builtin => BATTERY,
+        Link::Usb => USB,
+        Link::Bluetooth => BLUETOOTH,
+    };
+    let mut job = LayoutJob::default();
+    job.append(&battery.manufacturer, 0.0, text.clone());
+    let gap = if battery.manufacturer.is_empty() { 0.0 } else { 10.0 };
+    job.append(link, gap, glyph);
+    job.append(&battery.connection, 4.0, text);
+    job
 }
 
 /// A small pill with the charging state, tinted in the level color while charging.
