@@ -12,8 +12,6 @@ the command line or from a small tray icon on Windows.
 - **One place for all batteries.** The computer itself, Logitech devices and Bluetooth headphones.
 - **Light enough to run all day.** The tray sleeps between updates every 5 minutes.
 
-> 🟣 This is a personal project, created with the help of AI to save on development time. While simplicity of the implementation has been a focus, there is no guarantee on its stability.
-
 ## Quick start
 
 You need Windows and the [Rust toolchain](https://rustup.rs/).
@@ -43,3 +41,9 @@ To have the tray icon appear every time you log in, see [Start with Windows](doc
 **Under the hood**
 
 - [How it works](docs/how-it-works.md): where the readings come from and how the code is laid out
+
+# License and disclaimer
+
+> 🟣 This is a personal project, created with the help of AI to save on development time. While simplicity of the implementation has been a focus, there is no guarantee on its stability.
+
+This project is published under the [MIT License](LICENSE.md).
