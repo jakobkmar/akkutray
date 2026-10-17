@@ -1,4 +1,5 @@
 mod battery;
+mod bluetooth;
 mod hidpp;
 mod host;
 mod popup;

@@ -13,5 +13,13 @@ through a LIGHTSPEED, Bolt or Unifying receiver or by USB cable, such as the G91
 
 Not supported:
 
-- Devices connected by Bluetooth.
+- Logitech devices connected by Bluetooth, unless they are covered by the section below.
 - Devices that only report their battery voltage (feature `0x1001`), such as some older G mice.
+
+## Bluetooth devices
+
+Connected Bluetooth devices that report their battery level to Windows via the hands-free profile, such as most
+headphones and earbuds.
+
+The hands-free profile doesn't report whether a device is charging, so Bluetooth devices always show as on battery.
+Bluetooth Low Energy devices that only offer the GATT battery service are not supported yet.

@@ -1,4 +1,4 @@
-use crate::{hidpp, host};
+use crate::{bluetooth, hidpp, host};
 use std::fmt;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -33,5 +33,9 @@ impl fmt::Display for Battery {
 
 /// Returns the battery state of this computer, followed by that of every connected device.
 pub fn scan() -> Vec<Battery> {
-    host::battery().into_iter().chain(hidpp::scan()).collect()
+    host::battery()
+        .into_iter()
+        .chain(hidpp::scan())
+        .chain(bluetooth::scan())
+        .collect()
 }

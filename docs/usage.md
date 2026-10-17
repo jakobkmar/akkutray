@@ -16,6 +16,7 @@ PS> akkutray
 NEPTUN: 80% (charging)
 Signature M650: 85%
 G915 X LS TKL: 99%
+Bose QC Ultra Headphones: 100%
 ```
 
 The computer itself is listed first, under its computer name, if it has a battery. The other names are the ones the
