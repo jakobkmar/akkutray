@@ -1,8 +1,8 @@
 use crate::battery::{Battery, Kind};
 use crate::tray::Shared;
 use eframe::egui::{
-    self, Align, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Key, Layout, RichText, Sense,
-    Vec2, ViewportCommand,
+    self, Align, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Key, Layout, Margin, RichText,
+    Sense, Vec2, ViewportCommand,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ptr::null_mut;
@@ -11,7 +11,9 @@ use std::time::Duration;
 use windows_sys::Win32::Foundation::{HWND, POINT};
 use windows_sys::Win32::Graphics::Dwm::{DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute};
 use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
-use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SPI_GETCLIENTAREAANIMATION, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, SystemParametersInfoW,
+};
 
 const WIDTH: f32 = 340.0;
 /// Minimum gap between the popup and the edges of the screen's work area, in points.
@@ -62,6 +64,7 @@ struct Popup<'a> {
     hwnd: HWND,
     bounds: Option<(i32, i32, i32, i32)>,
     had_focus: bool,
+    animate: bool,
 }
 
 impl<'a> Popup<'a> {
@@ -89,6 +92,7 @@ impl<'a> Popup<'a> {
             hwnd,
             bounds: None,
             had_focus: false,
+            animate: animations_enabled(),
         }
     }
 
@@ -201,7 +205,7 @@ impl eframe::App for Popup<'_> {
                 });
             }
             for battery in &batteries {
-                device(ui, &palette, battery);
+                device(ui, &palette, battery, self.animate);
             }
         });
         self.place(content.response.rect.size(), ctx.pixels_per_point());
@@ -214,7 +218,7 @@ impl eframe::App for Popup<'_> {
     }
 }
 
-fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery) {
+fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool) {
     let [r, g, b] = level_color(battery.percent);
     let color = Color32::from_rgb(r, g, b);
     card(ui, palette, |ui| {
@@ -248,13 +252,8 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery) {
                     .collect::<Vec<_>>()
                     .join(" · ");
                 ui.label(RichText::new(source).size(12.0).color(palette.weak));
-                ui.horizontal(|ui| {
-                    if battery.charging {
-                        ui.label(icon(CHARGING, 11.0).color(color));
-                    }
-                    let state = if battery.charging { "Charging" } else { "On battery" };
-                    ui.label(RichText::new(state).size(12.0).color(palette.weak));
-                });
+                ui.add_space(4.0);
+                state_chip(ui, palette, battery.charging, color);
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let percent = RichText::new(format!("{}%", battery.percent))
@@ -269,7 +268,61 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery) {
         let mut fill = bar;
         fill.set_width(bar.width() * f32::from(battery.percent) / 100.0);
         ui.painter().rect_filled(fill, 3.0, color);
+        if battery.charging && animate {
+            shimmer(ui, fill);
+        }
     });
+}
+
+/// A small pill with the charging state, tinted in the level color while charging.
+fn state_chip(ui: &mut egui::Ui, palette: &Palette, charging: bool, color: Color32) {
+    let (fill, text) = if charging {
+        (color.gamma_multiply(0.15), color)
+    } else {
+        (palette.track, palette.weak)
+    };
+    Frame::new()
+        .fill(fill)
+        .corner_radius(8)
+        .inner_margin(Margin::symmetric(8, 2))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.horizontal(|ui| {
+                if charging {
+                    ui.label(icon(CHARGING, 10.0).color(text));
+                }
+                let state = if charging { "Charging" } else { "On battery" };
+                ui.label(RichText::new(state).family(semibold()).size(11.0).color(text));
+            });
+        });
+}
+
+/// Sweeps a soft highlight along the filled part of a charging battery's bar.
+fn shimmer(ui: &egui::Ui, fill: egui::Rect) {
+    const PERIOD: f64 = 1.8;
+    let width = fill.height() * 8.0;
+    let phase = (ui.input(|input| input.time) % PERIOD / PERIOD) as f32;
+    let center = fill.left() - width / 2.0 + phase * (fill.width() + width);
+    let light = Color32::from_white_alpha(120);
+
+    let mut mesh = egui::Mesh::default();
+    for (x, color) in [
+        (center - width / 2.0, Color32::TRANSPARENT),
+        (center, light),
+        (center + width / 2.0, Color32::TRANSPARENT),
+    ] {
+        mesh.colored_vertex(egui::pos2(x, fill.top()), color);
+        mesh.colored_vertex(egui::pos2(x, fill.bottom()), color);
+    }
+    for i in [0, 2] {
+        mesh.add_triangle(i, i + 1, i + 2);
+        mesh.add_triangle(i + 1, i + 2, i + 3);
+    }
+    // Keep the highlight off the bar's rounded ends.
+    let clip = fill.shrink2(Vec2::new(fill.height() / 2.0, 0.0));
+    ui.painter().with_clip_rect(clip).add(mesh);
+    // About 30 frames per second is smooth enough for this and saves power.
+    ui.ctx().request_repaint_after(Duration::from_millis(33));
 }
 
 fn card(ui: &mut egui::Ui, palette: &Palette, content: impl FnOnce(&mut egui::Ui)) {
@@ -352,4 +405,11 @@ fn fonts() -> FontDefinitions {
         }
     }
     fonts
+}
+
+/// Whether the "Animation effects" setting of Windows is on.
+fn animations_enabled() -> bool {
+    let mut enabled = 1i32;
+    unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&mut enabled as *mut i32).cast(), 0) };
+    enabled != 0
 }

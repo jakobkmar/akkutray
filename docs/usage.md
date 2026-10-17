@@ -35,7 +35,8 @@ again just prints `Tray is already running`.
   20% or below, and shows an empty outline when no device is reachable.
 - **Hover**: the tooltip lists every device with its battery level.
 - **Left click**: a small window opens right at the tray icon, showing each device with its battery level and
-  charging state. It closes when you click elsewhere or press <kbd>Esc</kbd>.
+  charging state. The bar of a charging device shows a moving highlight, unless *Animation effects* are turned off in
+  the Windows settings. The window closes when you click elsewhere or press <kbd>Esc</kbd>.
 - **Right click**: a menu lists the devices and offers **Refresh** and **Quit**.
 
 The battery level is updated every 5 minutes, whenever the window opens and when you choose **Refresh**.
