@@ -4,7 +4,7 @@
 akkutray [command]
 
 Commands:
-  status  Print the battery level of connected Logitech devices (default)
+  status  Print the battery levels of this computer and connected devices (default)
   tray    Show the battery level as a tray icon in the background
   help    Print this help
 ```
@@ -13,12 +13,13 @@ Commands:
 
 ```powershell
 PS> akkutray
+NEPTUN: 80% (charging)
 Signature M650: 85%
 G915 X LS TKL: 99%
 ```
 
-The device names are the ones the devices report. ` (charging)` is appended while a device is plugged in.
-If no device is found, the exit code is 1.
+The computer itself is listed first, under its computer name, if it has a battery. The other names are the ones the
+devices report. ` (charging)` is appended while a device is plugged in. If no device is found, the exit code is 1.
 
 ## Tray icon
 

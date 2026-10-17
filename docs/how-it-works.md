@@ -5,5 +5,8 @@ which Windows splits into a collection for short reports and one for long report
 every device slot of every receiver (and to wired devices) and reads the battery status. G Hub talks to the same
 interface, so a distinct software id keeps the responses of both programs apart.
 
-The code lives in `src/hidpp.rs` (protocol), `src/tray.rs` (tray icon), `src/popup.rs` (window, built with
+The computer's own battery comes from the Windows `GetSystemPowerStatus` API.
+
+The code lives in `src/battery.rs` (common battery type and scan), `src/host.rs` (this computer), `src/hidpp.rs`
+(Logitech protocol), `src/tray.rs` (tray icon), `src/popup.rs` (window, built with
 [egui](https://github.com/emilk/egui)) and `src/main.rs` (CLI).

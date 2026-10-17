@@ -1,7 +1,7 @@
 //! Minimal HID++ 2.0 client reading the battery state of Logitech devices.
 
+use crate::battery::{Battery, Kind};
 use hidapi::{HidApi, HidDevice};
-use std::fmt;
 use std::time::{Duration, Instant};
 
 const VENDOR_ID: u16 = 0x046d;
@@ -16,35 +16,6 @@ const TIMEOUT: Duration = Duration::from_secs(2);
 const ROOT: u8 = 0x00;
 const DEVICE_NAME_TYPE: u16 = 0x0005;
 const UNIFIED_BATTERY: u16 = 0x1004;
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum Kind {
-    Keyboard,
-    Mouse,
-    Headset,
-    Other,
-}
-
-#[derive(Clone)]
-pub struct Battery {
-    pub name: String,
-    pub kind: Kind,
-    pub manufacturer: String,
-    /// The receiver the device is paired with, or the USB cable for wired devices.
-    pub connection: String,
-    pub percent: u8,
-    pub charging: bool,
-}
-
-impl fmt::Display for Battery {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}%", self.name, self.percent)?;
-        if self.charging {
-            f.write_str(" (charging)")?;
-        }
-        Ok(())
-    }
-}
 
 /// Returns the battery state of every reachable device, on receivers as well as wired.
 pub fn scan() -> Vec<Battery> {

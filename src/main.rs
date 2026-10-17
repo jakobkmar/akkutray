@@ -1,4 +1,6 @@
+mod battery;
 mod hidpp;
+mod host;
 mod popup;
 mod tray;
 
@@ -11,7 +13,7 @@ const USAGE: &str = "\
 Usage: akkutray [command]
 
 Commands:
-  status  Print the battery level of connected Logitech devices (default)
+  status  Print the battery levels of this computer and connected devices (default)
   tray    Show the battery level as a tray icon in the background
   help    Print this help";
 
@@ -31,9 +33,9 @@ fn main() -> ExitCode {
 }
 
 fn status() -> ExitCode {
-    let batteries = hidpp::scan();
+    let batteries = battery::scan();
     if batteries.is_empty() {
-        eprintln!("No Logitech device with battery found");
+        eprintln!("No device with battery found");
         return ExitCode::FAILURE;
     }
     for battery in batteries {

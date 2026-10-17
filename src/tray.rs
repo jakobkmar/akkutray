@@ -1,4 +1,4 @@
-use crate::hidpp::{self, Battery};
+use crate::battery::{self, Battery};
 use crate::popup;
 use std::error::Error;
 use std::ptr::{null, null_mut};
@@ -54,7 +54,7 @@ impl Shared {
         let shared = self.clone();
         // Scanning takes up to a second while a device wakes up, so it runs off the UI thread.
         std::thread::spawn(move || {
-            let batteries = hidpp::scan();
+            let batteries = battery::scan();
             let mut state = shared.lock();
             state.batteries = batteries;
             state.updated = Some(Instant::now());
@@ -155,7 +155,7 @@ fn update(tray: &TrayIcon, shared: &Shared) -> Result<(), Box<dyn Error>> {
     menu.append(&MenuItem::with_id("quit", "Quit", true, None))?;
 
     let tooltip = if lines.is_empty() {
-        "No Logitech device with battery found".into()
+        "No device with battery found".into()
     } else {
         lines.join("\n")
     };

@@ -1,4 +1,4 @@
-use crate::hidpp::{Battery, Kind};
+use crate::battery::{Battery, Kind};
 use crate::tray::Shared;
 use eframe::egui::{
     self, Align, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Key, Layout, RichText, Sense,
@@ -22,6 +22,7 @@ const MEDIUM_PERCENT: u8 = 50;
 // Glyphs of the Segoe Fluent Icons font.
 const REFRESH: &str = "\u{e72c}";
 const CHARGING: &str = "\u{e945}";
+const LAPTOP: &str = "\u{e7f8}";
 const KEYBOARD: &str = "\u{e765}";
 const MOUSE: &str = "\u{e962}";
 const HEADSET: &str = "\u{e7f6}";
@@ -193,7 +194,7 @@ impl eframe::App for Popup<'_> {
                             .color(palette.text),
                     );
                     ui.label(
-                        RichText::new("Make sure your Logitech device is switched on and connected to its receiver.")
+                        RichText::new("Make sure your devices are switched on and connected.")
                             .size(12.0)
                             .color(palette.weak),
                     );
@@ -222,6 +223,7 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery) {
             ui.painter()
                 .circle_filled(badge.center(), 18.0, color.gamma_multiply(0.15));
             let glyph = match battery.kind {
+                Kind::Computer => LAPTOP,
                 Kind::Keyboard => KEYBOARD,
                 Kind::Mouse => MOUSE,
                 Kind::Headset => HEADSET,

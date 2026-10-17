@@ -13,7 +13,7 @@ akkutray tray            # run the tray icon
 - [Installation](docs/installation.md): build and install with Cargo
 - [Usage](docs/usage.md): command line and tray icon
 - [Start with Windows](docs/autostart.md): run the tray at login
-- [Supported devices](docs/supported-devices.md): Logitech devices via receiver or USB cable
+- [Supported devices](docs/supported-devices.md): this computer, and Logitech devices via receiver or USB cable
 - [Power consumption](docs/power-consumption.md): why it's fine to run all day on a laptop
 - [Troubleshooting](docs/troubleshooting.md): missing devices and slow readings
 - [How it works](docs/how-it-works.md): the HID++ protocol and code layout
