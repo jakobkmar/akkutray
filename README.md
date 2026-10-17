@@ -46,8 +46,8 @@ If no device is found, the exit code is 1.
 lgbattery tray
 ```
 
-This starts the tray icon in the background and returns at once. Only one tray icon runs at a time, so starting it
-again does nothing.
+This starts the tray icon in the background and returns at once. Only one tray icon runs at a time; starting it
+again just prints `Tray is already running`.
 
 - **Icon**: a battery filled to the lowest level of all devices. It turns red at 20% or below and shows an empty
   outline when no device is reachable.

@@ -2,14 +2,18 @@ use crate::hidpp::{self, Battery};
 use std::cell::RefCell;
 use std::ptr::{null, null_mut};
 use std::sync::OnceLock;
-use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM,
+};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Threading::CreateMutexW;
+use windows_sys::Win32::System::Threading::{CreateMutexW, OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
 use windows_sys::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 use windows_sys::Win32::UI::Shell::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
+use windows_sys::core::PCWSTR;
 use windows_sys::w;
 
+const MUTEX_NAME: PCWSTR = w!("lgbattery-tray");
 const POLL_INTERVAL_MS: u32 = 5 * 60 * 1000;
 const LOW_PERCENT: u8 = 20;
 const WM_TRAY: u32 = WM_APP;
@@ -21,10 +25,21 @@ thread_local! {
 }
 static TASKBAR_CREATED: OnceLock<u32> = OnceLock::new();
 
+pub fn is_running() -> bool {
+    unsafe {
+        let mutex = OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, 0, MUTEX_NAME);
+        if mutex.is_null() {
+            return false;
+        }
+        CloseHandle(mutex);
+        true
+    }
+}
+
 pub fn run() {
     unsafe {
-        // Keep a single tray icon if the tray gets started twice, e.g. by autostart and by hand.
-        CreateMutexW(null(), 0, w!("lgbattery-tray"));
+        // Keep a single tray icon if two trays start at the same time, e.g. by autostart and by hand.
+        CreateMutexW(null(), 0, MUTEX_NAME);
         if GetLastError() == ERROR_ALREADY_EXISTS {
             return;
         }

@@ -42,6 +42,10 @@ fn status() -> ExitCode {
 }
 
 fn tray() -> ExitCode {
+    if tray::is_running() {
+        println!("Tray is already running");
+        return ExitCode::SUCCESS;
+    }
     if unsafe { GetConsoleWindow() }.is_null() {
         tray::run();
         return ExitCode::SUCCESS;
