@@ -4,8 +4,11 @@ See the battery level of your laptop, mouse and keyboard, and Bluetooth headphon
 the command line or from a small tray icon on Windows.
 
 <p align="center">
-  <img src="docs/images/screenshot-tray-ui.png" width="360"
-       alt="The akkutray window open above the Windows taskbar, listing a laptop, a Logitech mouse and keyboard, and Bluetooth headphones, each with its battery level and charging state">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot-tray-ui-dark.png">
+    <img src="docs/images/screenshot-tray-ui.png" width="360"
+         alt="The akkutray window open above the Windows taskbar, listing a laptop, a Logitech mouse and keyboard, and Bluetooth headphones, each with its battery level and charging state">
+  </picture>
 </p>
 
 - **No Logitech G Hub needed.** akkutray talks to Logitech receivers directly, and can run next to G Hub.
