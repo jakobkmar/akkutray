@@ -15,7 +15,7 @@ const UNKNOWN_PERCENT: u8 = 255;
 const AC_ONLINE: u8 = 1;
 
 pub fn battery() -> Option<Battery> {
-    let mut status: SYSTEM_POWER_STATUS = unsafe { std::mem::zeroed() };
+    let mut status = SYSTEM_POWER_STATUS::default();
     let ok = unsafe { GetSystemPowerStatus(&mut status) } != 0;
     if !ok || status.BatteryFlag & NO_BATTERY != 0 || status.BatteryLifePercent == UNKNOWN_PERCENT {
         return None;

@@ -98,7 +98,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let mut popup_closed: Option<Instant> = None;
     loop {
-        let mut msg: MSG = unsafe { std::mem::zeroed() };
+        let mut msg = MSG::default();
         if unsafe { GetMessageW(&mut msg, null_mut(), 0, 0) } <= 0 {
             return Ok(());
         }
