@@ -1,6 +1,6 @@
 # akkutray
 
-See the battery level of your laptop, Logitech mouse and keyboard, and Bluetooth headphones at a glance, from
+See the battery level of your laptop, mouse and keyboard, and Bluetooth headphones at a glance, from
 the command line or from a small tray icon on Windows.
 
 <p align="center">
@@ -8,18 +8,11 @@ the command line or from a small tray icon on Windows.
        alt="The akkutray window open above the Windows taskbar, listing a laptop, a Logitech mouse and keyboard, and Bluetooth headphones, each with its battery level and charging state">
 </p>
 
-Clicking the tray icon opens the window above. On the command line, `akkutray` prints the same readings:
-
-```text
-Zenbook 14X Space Edition: 80% (charging)
-Signature M650: 85%
-G915 X LS TKL: 99%
-Bose QC Ultra Headphones: 100%
-```
-
 - **No Logitech G Hub needed.** akkutray talks to Logitech receivers directly, and can run next to G Hub.
 - **One place for all batteries.** The computer itself, Logitech devices and Bluetooth headphones.
 - **Light enough to run all day.** The tray sleeps between updates every 5 minutes.
+
+> 🟣 This is a personal project, created with the help of AI to save on development time. While simplicity of the implementation has been a focus, there is no guarantee on its stability.
 
 ## Quick start
 
@@ -27,7 +20,7 @@ You need Windows and the [Rust toolchain](https://rustup.rs/).
 
 ```powershell
 cargo install --path .   # build and install
-akkutray                 # print battery levels once
+akkutray                 # print battery levels once to the terminal
 akkutray tray            # show a tray icon in the background
 ```
 
