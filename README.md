@@ -49,12 +49,14 @@ logibattery tray
 This starts the tray icon in the background and returns at once. Only one tray icon runs at a time; starting it
 again just prints `Tray is already running`.
 
-- **Icon**: a battery filled to the lowest level of all devices. It turns red at 20% or below and shows an empty
-  outline when no device is reachable.
+- **Icon**: a battery filled to the lowest level of all devices. It is green above 50%, amber down to 21% and red at
+  20% or below, and shows an empty outline when no device is reachable.
 - **Hover**: the tooltip lists every device with its battery level.
-- **Click** (left or right): a small menu lists the devices and offers **Refresh** and **Quit**.
+- **Left click**: a small window opens right at the tray icon, showing each device with its battery level and
+  charging state. It closes when you click elsewhere or press <kbd>Esc</kbd>.
+- **Right click**: a menu lists the devices and offers **Refresh** and **Quit**.
 
-The battery level is updated every 5 minutes and whenever you choose **Refresh**.
+The battery level is updated every 5 minutes, whenever the window opens and when you choose **Refresh**.
 
 > Windows 11 puts new tray icons in the overflow area (the `^` arrow). To keep the icon visible, drag it onto
 > the taskbar or enable it under *Settings → Personalization → Taskbar → Other system tray icons*.
@@ -72,9 +74,10 @@ login while the tray moves to the background.
 
 The tray is designed to run on a laptop all day:
 
-- It does nothing between updates: no background threads and no polling loops, only a blocking Windows message loop.
-- Updates run every 5 minutes on a coalescable timer, so Windows can batch the wake-up with other timers.
-- An update takes a few milliseconds of CPU and some short radio messages to the devices.
+- It does nothing between updates: no polling loops, only a blocking Windows message loop.
+- The window exists only while it is open. Closing it destroys the window and its graphics context.
+- Updates run every 5 minutes on a coalescable timer, so Windows can batch the wake-up with other timers. An update
+  takes a few milliseconds of CPU and some short radio messages to the devices.
 
 ## Troubleshooting
 
@@ -91,4 +94,5 @@ which Windows splits into a collection for short reports and one for long report
 every device slot of every receiver (and to wired devices) and reads the battery status. G Hub talks to the same
 interface, so a distinct software id keeps the responses of both programs apart.
 
-The code lives in `src/hidpp.rs` (protocol), `src/tray.rs` (tray icon) and `src/main.rs` (CLI).
+The code lives in `src/hidpp.rs` (protocol), `src/tray.rs` (tray icon), `src/popup.rs` (window, built with
+[egui](https://github.com/emilk/egui)) and `src/main.rs` (CLI).

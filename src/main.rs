@@ -1,4 +1,5 @@
 mod hidpp;
+mod popup;
 mod tray;
 
 use std::os::windows::process::CommandExt;
@@ -47,8 +48,13 @@ fn tray() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if unsafe { GetConsoleWindow() }.is_null() {
-        tray::run();
-        return ExitCode::SUCCESS;
+        return match tray::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("Failed to run tray: {err}");
+                ExitCode::FAILURE
+            }
+        };
     }
     // Relaunch without a console, so the tray neither blocks the terminal nor keeps a console window open.
     let child = std::env::current_exe().and_then(|exe| {
