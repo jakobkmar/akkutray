@@ -1,5 +1,7 @@
 # Usage
 
+akkutray has two modes: print the battery levels once, or keep a tray icon running in the background.
+
 ```
 akkutray [command]
 
@@ -9,7 +11,9 @@ Commands:
   help    Print this help
 ```
 
-## Command line
+## Print battery levels
+
+Run `akkutray` (or `akkutray status`):
 
 ```powershell
 PS> akkutray
@@ -19,31 +23,66 @@ G915 X LS TKL: 99%
 Bose QC Ultra Headphones: 100%
 ```
 
-The computer itself is listed first if it has a battery, under the model name its firmware reports (or its computer
-name if there is none). The other names are the ones the devices report. Unclear reported names are replaced by the
-display names listed in [`data/names.txt`](../data/names.txt). ` (charging)` is appended while a device is plugged in.
-If no device is found, the exit code is 1.
+Each line is one device with its battery level. `(charging)` is added while a device is plugged in.
+
+- **This computer comes first**, if it has a battery. It is named after the model its firmware reports, or after
+  the computer name if the firmware reports none.
+- **Other devices** use the name they report themselves.
+- **Unclear names** can be replaced by friendlier ones, see [Display names](#display-names).
+
+If no device is found, akkutray prints `No device with battery found` and exits with code 1, so scripts can tell.
 
 ## Tray icon
 
-```powershell
-akkutray tray
+Run `akkutray tray`. The tray icon starts in the background and the command returns at once. Only one tray icon
+runs at a time: starting it again just prints `Tray is already running`.
+
+### The icon
+
+The icon is a battery filled to the **lowest** level among all your devices, so it warns you about whichever one
+runs out first.
+
+| Color | Lowest level |
+| --- | --- |
+| Green | above 50% |
+| Amber | 21% to 50% |
+| Red | 20% or below |
+| Empty outline | no device reachable |
+
+### Interacting with it
+
+| Action | What happens |
+| --- | --- |
+| Hover | A tooltip lists every device with its battery level. |
+| Left click | A small window opens at the icon, showing each device with its level and charging state. Click elsewhere or press <kbd>Esc</kbd> to close it. |
+| Right click | A menu lists the devices and offers **Refresh** and **Quit**. |
+
+Charging devices get a moving highlight on their bar in the window, unless *Animation effects* are turned off in
+the Windows settings.
+
+### When it updates
+
+The battery levels are read again:
+
+- every 5 minutes,
+- whenever you open the window,
+- when you choose **Refresh**.
+
+### Can't see the icon?
+
+Windows 11 puts new tray icons in the overflow area behind the `^` arrow. To keep the icon visible, drag it onto the
+taskbar, or turn it on under *Settings → Personalization → Taskbar → Other system tray icons*.
+
+To start the tray every time you log in, see [Start with Windows](autostart.md).
+
+## Display names
+
+Some devices report names that are hard to recognize, such as `Zenbook UX5401ZAS_UX5401ZAS`. The file
+[`data/names.txt`](../data/names.txt) maps them to friendlier names, one per line:
+
+```
+Zenbook UX5401ZAS_UX5401ZAS = Zenbook 14X Space Edition
 ```
 
-This starts the tray icon in the background and returns at once. Only one tray icon runs at a time; starting it
-again just prints `Tray is already running`.
-
-- **Icon**: a battery filled to the lowest level of all devices. It is green above 50%, amber down to 21% and red at
-  20% or below, and shows an empty outline when no device is reachable.
-- **Hover**: the tooltip lists every device with its battery level.
-- **Left click**: a small window opens right at the tray icon, showing each device with its battery level and
-  charging state. The bar of a charging device shows a moving highlight, unless *Animation effects* are turned off in
-  the Windows settings. The window closes when you click elsewhere or press <kbd>Esc</kbd>.
-- **Right click**: a menu lists the devices and offers **Refresh** and **Quit**.
-
-The battery level is updated every 5 minutes, whenever the window opens and when you choose **Refresh**.
-
-> Windows 11 puts new tray icons in the overflow area (the `^` arrow). To keep the icon visible, drag it onto
-> the taskbar or enable it under *Settings → Personalization → Taskbar → Other system tray icons*.
-
-To start the tray automatically, see [Start with Windows](autostart.md).
+The name on the left has to match the reported name exactly. The file is built into the program, so after editing
+it, [install](installation.md#update) again.

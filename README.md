@@ -1,19 +1,46 @@
 # akkutray
 
-Shows the battery level of your wireless devices on Windows, on the command line or as a lightweight tray icon.
+See the battery level of your laptop, Logitech mouse and keyboard, and Bluetooth headphones at a glance, from
+the command line or from a small tray icon on Windows.
 
 ```powershell
-cargo install --path .   # install
-akkutray                 # print battery levels
-akkutray tray            # run the tray icon
+PS> akkutray
+Zenbook 14X Space Edition: 80% (charging)
+Signature M650: 85%
+G915 X LS TKL: 99%
+Bose QC Ultra Headphones: 100%
 ```
+
+- **No Logitech G Hub needed.** akkutray talks to Logitech receivers directly, and can run next to G Hub.
+- **One place for all batteries.** The computer itself, Logitech devices and Bluetooth headphones.
+- **Light enough to run all day.** The tray sleeps between updates every 5 minutes.
+
+## Quick start
+
+You need Windows and the [Rust toolchain](https://rustup.rs/).
+
+```powershell
+cargo install --path .   # build and install
+akkutray                 # print battery levels once
+akkutray tray            # show a tray icon in the background
+```
+
+To have the tray icon appear every time you log in, see [Start with Windows](docs/autostart.md).
 
 ## Documentation
 
-- [Installation](docs/installation.md): build and install with Cargo
-- [Usage](docs/usage.md): command line and tray icon
-- [Start with Windows](docs/autostart.md): run the tray at login
-- [Supported devices](docs/supported-devices.md): this computer, Logitech devices and Bluetooth headphones
-- [Power consumption](docs/power-consumption.md): why it's fine to run all day on a laptop
-- [Troubleshooting](docs/troubleshooting.md): missing devices and slow readings
-- [How it works](docs/how-it-works.md): the HID++ protocol and code layout
+**Getting started**
+
+- [Installation](docs/installation.md): install, update and uninstall
+- [Usage](docs/usage.md): the command line and the tray icon
+- [Start with Windows](docs/autostart.md): start the tray at login
+
+**Reference**
+
+- [Supported devices](docs/supported-devices.md): which devices work and which don't
+- [Troubleshooting](docs/troubleshooting.md): missing devices, hidden icon, slow readings
+- [Power consumption](docs/power-consumption.md): why the tray is fine on a laptop
+
+**Under the hood**
+
+- [How it works](docs/how-it-works.md): where the readings come from and how the code is laid out
