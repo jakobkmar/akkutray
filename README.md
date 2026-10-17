@@ -3,7 +3,10 @@
 See the battery level of your laptop, Logitech mouse and keyboard, and Bluetooth headphones at a glance, from
 the command line or from a small tray icon on Windows.
 
-Running `akkutray` prints:
+<img src="docs/images/screenshot-tray-ui.png" width="360"
+     alt="The akkutray window open above the Windows taskbar, listing a laptop, a Logitech mouse and keyboard, and Bluetooth headphones, each with its battery level and charging state">
+
+Clicking the tray icon opens the window above. On the command line, `akkutray` prints the same readings:
 
 ```text
 Zenbook 14X Space Edition: 80% (charging)
