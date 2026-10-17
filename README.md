@@ -46,4 +46,4 @@ To have the tray icon appear every time you log in, see [Start with Windows](doc
 
 > 🟣 This is a personal project, created with the help of AI to save on development time. While simplicity of the implementation has been a focus, there is no guarantee on its stability.
 
-This project is published under the [MIT License](LICENSE.md).
+This project is published under the [MIT License](LICENSE).
