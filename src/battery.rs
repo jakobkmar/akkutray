@@ -37,5 +37,19 @@ pub fn scan() -> Vec<Battery> {
         .into_iter()
         .chain(hidpp::scan())
         .chain(bluetooth::scan())
+        .map(|battery| Battery {
+            name: display_name(battery.name),
+            ..battery
+        })
         .collect()
+}
+
+/// Replaces a reported name with the display name listed for it in `data/names.txt`, if any.
+fn display_name(reported: String) -> String {
+    include_str!("../data/names.txt")
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once(" = "))
+        .find(|(from, _)| from.trim() == reported)
+        .map_or(reported, |(_, to)| to.trim().to_string())
 }

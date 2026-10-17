@@ -1,0 +1,4 @@
+# Display names for devices whose reported name is unclear, one `reported name = display name` per line.
+# The reported name has to match exactly, as printed by `akkutray` without this file.
+
+Zenbook UX5401ZAS_UX5401ZAS = Zenbook 14X Space Edition

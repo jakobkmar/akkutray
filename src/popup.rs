@@ -237,29 +237,26 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool
             ui.painter()
                 .text(badge.center(), Align2::CENTER_CENTER, glyph, font, color);
 
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
-                ui.label(
-                    RichText::new(&battery.name)
-                        .family(semibold())
-                        .size(14.0)
-                        .color(palette.text),
-                );
-                let source = [battery.manufacturer.as_str(), battery.connection.as_str()];
-                let source = source
-                    .into_iter()
-                    .filter(|part| !part.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" · ");
-                ui.label(RichText::new(source).size(12.0).color(palette.weak));
-                ui.add_space(4.0);
-                state_chip(ui, palette, battery.charging, color);
-            });
+            // The percentage is placed first, so long names wrap in the remaining width instead of overlapping it.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let percent = RichText::new(format!("{}%", battery.percent))
                     .family(semibold())
                     .size(22.0);
                 ui.label(percent.color(palette.text));
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
+                    let name = RichText::new(&battery.name).family(semibold()).size(14.0);
+                    ui.add(egui::Label::new(name.color(palette.text)).wrap());
+                    let source = [battery.manufacturer.as_str(), battery.connection.as_str()];
+                    let source = source
+                        .into_iter()
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    ui.add(egui::Label::new(RichText::new(source).size(12.0).color(palette.weak)).wrap());
+                    ui.add_space(4.0);
+                    state_chip(ui, palette, battery.charging, color);
+                });
             });
         });
 

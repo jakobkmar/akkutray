@@ -13,14 +13,16 @@ Commands:
 
 ```powershell
 PS> akkutray
-NEPTUN: 80% (charging)
+Zenbook 14X Space Edition: 80% (charging)
 Signature M650: 85%
 G915 X LS TKL: 99%
 Bose QC Ultra Headphones: 100%
 ```
 
-The computer itself is listed first, under its computer name, if it has a battery. The other names are the ones the
-devices report. ` (charging)` is appended while a device is plugged in. If no device is found, the exit code is 1.
+The computer itself is listed first if it has a battery, under the model name its firmware reports (or its computer
+name if there is none). The other names are the ones the devices report. Unclear reported names are replaced by the
+display names listed in [`data/names.txt`](../data/names.txt). ` (charging)` is appended while a device is plugged in.
+If no device is found, the exit code is 1.
 
 ## Tray icon
 
