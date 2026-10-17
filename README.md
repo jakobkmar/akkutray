@@ -1,0 +1,1 @@
+# logitechg-battery-widget
