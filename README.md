@@ -65,7 +65,8 @@ The battery level is updated every 5 minutes and whenever you choose **Refresh**
 2. In the folder that opens, right-click → *New → Shortcut* and enter the target
    `"%USERPROFILE%\.cargo\bin\logibattery.exe" tray` (or the path you copied the exe to).
 
-At login a console window flashes briefly while the tray moves to the background.
+On Windows 11 24H2 and later no console window appears. On older versions a console window flashes briefly at
+login while the tray moves to the background.
 
 ## Power consumption
 
