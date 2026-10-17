@@ -3,8 +3,9 @@
 See the battery level of your laptop, Logitech mouse and keyboard, and Bluetooth headphones at a glance, from
 the command line or from a small tray icon on Windows.
 
-```powershell
-PS> akkutray
+Running `akkutray` prints:
+
+```text
 Zenbook 14X Space Edition: 80% (charging)
 Signature M650: 85%
 G915 X LS TKL: 99%

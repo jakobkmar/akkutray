@@ -16,7 +16,12 @@ Commands:
 Run `akkutray` (or `akkutray status`):
 
 ```powershell
-PS> akkutray
+akkutray
+```
+
+It prints the battery levels:
+
+```text
 Zenbook 14X Space Edition: 80% (charging)
 Signature M650: 85%
 G915 X LS TKL: 99%
