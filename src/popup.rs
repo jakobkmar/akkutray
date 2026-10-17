@@ -40,7 +40,7 @@ pub fn level_color(percent: u8) -> [u8; 3] {
 pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Logitech battery")
+            .with_title("akkutray")
             .with_inner_size([WIDTH, 200.0])
             .with_decorations(false)
             .with_resizable(false)
@@ -49,7 +49,7 @@ pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "logibattery",
+        "akkutray",
         options,
         Box::new(|cc| Ok(Box::new(Popup::new(cc, shared, anchor)))),
     )

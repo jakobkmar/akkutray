@@ -17,7 +17,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use windows_sys::core::PCWSTR;
 use windows_sys::w;
 
-const MUTEX_NAME: PCWSTR = w!("logibattery-tray");
+const MUTEX_NAME: PCWSTR = w!("akkutray-tray");
 const POLL_INTERVAL_MS: u32 = 5 * 60 * 1000;
 /// Posted to the tray thread when new readings are available.
 const WM_READINGS: u32 = WM_APP;

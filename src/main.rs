@@ -8,7 +8,7 @@ use windows_sys::Win32::System::Console::GetConsoleWindow;
 use windows_sys::Win32::System::Threading::DETACHED_PROCESS;
 
 const USAGE: &str = "\
-Usage: logibattery [command]
+Usage: akkutray [command]
 
 Commands:
   status  Print the battery level of connected Logitech devices (default)
