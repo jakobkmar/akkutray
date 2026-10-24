@@ -140,10 +140,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// Shows the latest readings in the tray icon, its tooltip and its menu.
+/// Shows the latest readings of connected devices in the tray icon, its tooltip and its menu.
 fn update(tray: &TrayIcon, shared: &Shared) -> Result<(), Box<dyn Error>> {
     let state = shared.lock();
-    let lines: Vec<String> = state.batteries.iter().map(Battery::to_string).collect();
+    let connected: Vec<&Battery> = state.batteries.iter().filter(|battery| battery.connected).collect();
+    let lines: Vec<String> = connected.iter().map(|battery| battery.to_string()).collect();
     let menu = Menu::new();
     for line in &lines {
         menu.append(&MenuItem::new(line, false, None))?;
@@ -161,7 +162,7 @@ fn update(tray: &TrayIcon, shared: &Shared) -> Result<(), Box<dyn Error>> {
     };
     tray.set_menu(Some(Box::new(menu)));
     tray.set_tooltip(Some(tooltip))?;
-    tray.set_icon(Some(icon(state.batteries.iter().map(|battery| battery.percent).min())?))?;
+    tray.set_icon(Some(icon(connected.iter().map(|battery| battery.percent).min())?))?;
     Ok(())
 }
 

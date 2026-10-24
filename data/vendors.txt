@@ -1,0 +1,56 @@
+# Manufacturer names of Bluetooth devices, by the vendor id they report, one `source:id = name` per line.
+# The source tells who assigned the id: `bluetooth` for the Bluetooth SIG company identifiers, `usb` for USB-IF
+# vendor ids.
+
+bluetooth:0x0006 = Microsoft
+bluetooth:0x004C = Apple
+bluetooth:0x0055 = Plantronics
+bluetooth:0x0057 = Harman
+bluetooth:0x0075 = Samsung
+bluetooth:0x0076 = Creative
+bluetooth:0x009E = Bose
+bluetooth:0x00C4 = LG
+bluetooth:0x00CC = Beats
+bluetooth:0x00D9 = Turtle Beach
+bluetooth:0x00E0 = Google
+bluetooth:0x0103 = Bang & Olufsen
+bluetooth:0x0111 = SteelSeries
+bluetooth:0x012D = Sony
+bluetooth:0x018E = Google
+bluetooth:0x01DA = Logitech
+bluetooth:0x01DD = Philips
+bluetooth:0x027D = Huawei
+bluetooth:0x038F = Xiaomi
+bluetooth:0x0494 = Sennheiser
+bluetooth:0x04AD = Shure
+bluetooth:0x0553 = Nintendo
+bluetooth:0x055D = Valve
+bluetooth:0x0618 = Audio-Technica
+bluetooth:0x065A = Marshall
+bluetooth:0x068E = Razer
+bluetooth:0x072F = OnePlus
+bluetooth:0x075A = Harman
+bluetooth:0x079A = OPPO
+bluetooth:0x07C9 = Skullcandy
+bluetooth:0x07E0 = Edifier
+bluetooth:0x07FA = Klipsch
+bluetooth:0x0A82 = Corsair
+bluetooth:0x0CC2 = Anker
+bluetooth:0x0CCB = Nothing
+bluetooth:0x0D10 = JVCKenwood
+bluetooth:0x0D81 = Beyerdynamic
+
+usb:0x03F0 = HP
+usb:0x045E = Microsoft
+usb:0x046D = Logitech
+usb:0x047F = Plantronics
+usb:0x04E8 = Samsung
+usb:0x054C = Sony
+usb:0x05A7 = Bose
+usb:0x05AC = Apple
+usb:0x0B0E = Jabra
+usb:0x1038 = SteelSeries
+usb:0x1532 = Razer
+usb:0x17EF = Lenovo
+usb:0x2717 = Xiaomi
+usb:0x413C = Dell

@@ -1,14 +1,15 @@
-use crate::battery::{Battery, Kind, Link};
+use crate::battery::{Battery, Kind, Link, Pack, Power};
 use crate::tray::Shared;
+use eframe::egui::emath::easing;
 use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
-    self, Align, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Frame, Key, Layout, Margin, RichText,
-    Sense, Vec2, ViewportCommand,
+    self, Align, Align2, Color32, CursorIcon, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, InnerResponse,
+    Key, Layout, Margin, Pos2, Rect, RichText, Sense, UiBuilder, Vec2, ViewportCommand, pos2,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ptr::null_mut;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, POINT};
 use windows_sys::Win32::Graphics::Dwm::{DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute};
 use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
@@ -21,6 +22,10 @@ const WIDTH: f32 = 340.0;
 const SCREEN_MARGIN: f32 = 12.0;
 const LOW_PERCENT: u8 = 20;
 const MEDIUM_PERCENT: u8 = 50;
+/// Seconds the details page takes to slide in or out.
+const SLIDE_TIME: f32 = 0.25;
+/// Room given to a page to lay itself out, far more than any page needs.
+const PAGE_MAX_HEIGHT: f32 = 4000.0;
 
 // Glyphs of the Segoe Fluent Icons font.
 const REFRESH: &str = "\u{e72c}";
@@ -32,6 +37,10 @@ const HEADSET: &str = "\u{e7f6}";
 const BATTERY: &str = "\u{e83f}";
 const USB: &str = "\u{e88e}";
 const BLUETOOTH: &str = "\u{e702}";
+const CHECK: &str = "\u{e73e}";
+const WARNING: &str = "\u{e7ba}";
+const CHEVRON_RIGHT: &str = "\u{e76c}";
+const BACK: &str = "\u{e72b}";
 
 /// Color for a battery level, shared with the tray icon.
 pub fn level_color(percent: u8) -> [u8; 3] {
@@ -68,6 +77,16 @@ struct Popup<'a> {
     bounds: Option<(i32, i32, i32, i32)>,
     had_focus: bool,
     animate: bool,
+    /// Whether the details page is shown or slides in, rather than the list.
+    details: bool,
+}
+
+/// What a click in the popup asks for.
+enum Action {
+    Refresh,
+    /// Shows the details page.
+    Open,
+    Back,
 }
 
 impl<'a> Popup<'a> {
@@ -87,6 +106,14 @@ impl<'a> Popup<'a> {
                 4,
             )
         };
+        let animate = animations_enabled();
+        cc.egui_ctx.all_styles_mut(|style| {
+            // Clicking a card opens its details, so its texts shouldn't take the click to select themselves.
+            style.interaction.selectable_labels = false;
+            if !animate {
+                style.animation_time = 0.0;
+            }
+        });
         shared.lock().popup = Some(cc.egui_ctx.clone());
         shared.refresh();
         Self {
@@ -95,7 +122,8 @@ impl<'a> Popup<'a> {
             hwnd,
             bounds: None,
             had_focus: false,
-            animate: animations_enabled(),
+            animate,
+            details: false,
         }
     }
 
@@ -149,8 +177,16 @@ impl eframe::App for Popup<'_> {
         let ctx = ui.ctx().clone();
         let focused = ctx.input(|input| input.viewport().focused);
         self.had_focus |= focused == Some(true);
-        if ctx.input(|input| input.key_pressed(Key::Escape)) || self.had_focus && focused == Some(false) {
+        if self.had_focus && focused == Some(false) {
             ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+        // Escape leads back from the details page first.
+        if ctx.input(|input| input.key_pressed(Key::Escape)) {
+            if self.details {
+                self.details = false;
+            } else {
+                ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
         }
 
         let palette = Palette::new(ui.visuals().dark_mode);
@@ -158,59 +194,44 @@ impl eframe::App for Popup<'_> {
             let state = self.shared.lock();
             (state.batteries.clone(), state.updated, state.updating)
         };
-        let status = match updated {
-            None => "Looking for devices…".to_string(),
-            Some(time) if time.elapsed() < Duration::from_secs(60) => "Updated just now".to_string(),
-            Some(time) => format!("Updated {} min ago", time.elapsed().as_secs() / 60),
-        };
+        let animate = self.animate;
+        let with_details = batteries.iter().find(|battery| has_details(battery));
+        self.details &= with_details.is_some();
+        let time = if animate { SLIDE_TIME } else { 0.0 };
+        let slide_id = ui.make_persistent_id("details");
+        let slide = ctx.animate_bool_with_time_and_easing(slide_id, self.details, time, easing::cubic_out);
 
+        let mut actions = Vec::new();
+        let width = WIDTH - 32.0;
         let content = Frame::new().inner_margin(16).show(ui, |ui| {
-            ui.set_width(WIDTH - 32.0);
+            ui.set_width(width);
             ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    ui.label(
-                        RichText::new("Battery")
-                            .family(semibold())
-                            .size(18.0)
-                            .color(palette.text),
-                    );
-                    ui.label(RichText::new(status).size(12.0).color(palette.weak));
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if updating {
-                        ui.add(egui::Spinner::new().size(16.0).color(palette.weak));
-                    } else if ui
-                        .add(egui::Button::new(icon(REFRESH, 14.0).color(palette.weak)).frame(false))
-                        .on_hover_text("Refresh")
-                        .clicked()
-                    {
-                        self.shared.refresh();
-                    }
-                });
+            let origin = ui.cursor().min;
+            // Pages slide within the content area, so they mustn't show in the margins.
+            let clip = Rect::from_x_y_ranges(origin.x..=origin.x + width, ui.clip_rect().y_range());
+            // The list leaves to the left while the details page comes in from the right.
+            let list_at = pos2(origin.x - slide * width, origin.y);
+            let mut height = page(ui, "list", list_at, clip, slide < 1.0, |ui| {
+                list(ui, &palette, &batteries, updated, updating, animate, &mut actions);
             });
-            ui.add_space(4.0);
-
-            if batteries.is_empty() && !updating {
-                card(ui, &palette, |ui| {
-                    ui.label(
-                        RichText::new("No device found")
-                            .family(semibold())
-                            .size(14.0)
-                            .color(palette.text),
-                    );
-                    ui.label(
-                        RichText::new("Make sure your devices are switched on and connected.")
-                            .size(12.0)
-                            .color(palette.weak),
-                    );
+            // The popup takes the height of its taller page, so it doesn't resize while a page slides in. While the
+            // details page isn't shown, it is only laid out to measure it.
+            if let Some(battery) = with_details {
+                let at = pos2(origin.x + (1.0 - slide) * width, origin.y);
+                let details_height = page(ui, "details", at, clip, slide > 0.0, |ui| {
+                    details_page(ui, &palette, battery, animate, &mut actions);
                 });
+                height = height.max(details_height);
             }
-            for battery in &batteries {
-                device(ui, &palette, battery, self.animate);
-            }
+            ui.allocate_space(Vec2::new(width, height));
         });
+        for action in actions {
+            match action {
+                Action::Refresh => self.shared.refresh(),
+                Action::Open => self.details = true,
+                Action::Back => self.details = false,
+            }
+        }
         self.place(content.response.rect.size(), ctx.pixels_per_point());
         // Keeps "Updated … ago" current.
         ctx.request_repaint_after(Duration::from_secs(60));
@@ -221,51 +242,317 @@ impl eframe::App for Popup<'_> {
     }
 }
 
-fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool) {
+/// Lays out a page at `min`, clipped to `clip`, and returns its height. An invisible page is only measured.
+fn page(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    min: Pos2,
+    clip: Rect,
+    visible: bool,
+    content: impl FnOnce(&mut egui::Ui),
+) -> f32 {
+    let rect = Rect::from_min_size(min, Vec2::new(clip.width(), PAGE_MAX_HEIGHT));
+    let mut builder = UiBuilder::new()
+        .id_salt(id_salt)
+        .max_rect(rect)
+        .layout(Layout::top_down(Align::Min));
+    if !visible {
+        builder = builder.invisible();
+    }
+    let mut page = ui.new_child(builder);
+    page.set_clip_rect(clip.intersect(page.clip_rect()));
+    page.set_width(clip.width());
+    content(&mut page);
+    page.min_rect().height()
+}
+
+/// The header with the refresh button, followed by a card for every device.
+fn list(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    batteries: &[Battery],
+    updated: Option<Instant>,
+    updating: bool,
+    animate: bool,
+    actions: &mut Vec<Action>,
+) {
+    let status = match updated {
+        None => "Looking for devices…".to_string(),
+        Some(time) => format!("Updated {}", ago(time.elapsed())),
+    };
+    let (connected, disconnected): (Vec<&Battery>, Vec<&Battery>) =
+        batteries.iter().partition(|battery| battery.connected);
+
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(
+                RichText::new("Battery")
+                    .family(semibold())
+                    .size(18.0)
+                    .color(palette.text),
+            );
+            ui.label(RichText::new(status).size(12.0).color(palette.weak));
+        });
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if updating {
+                ui.add(egui::Spinner::new().size(16.0).color(palette.weak));
+            } else if icon_button(ui, palette, REFRESH, palette.weak, "Refresh") {
+                actions.push(Action::Refresh);
+            }
+        });
+    });
+    ui.add_space(4.0);
+
+    if connected.is_empty() && !updating {
+        card(ui, palette, None, |ui| {
+            ui.label(
+                RichText::new("No device found")
+                    .family(semibold())
+                    .size(14.0)
+                    .color(palette.text),
+            );
+            ui.label(
+                RichText::new("Make sure your devices are switched on and connected.")
+                    .size(12.0)
+                    .color(palette.weak),
+            );
+        });
+    }
+    for battery in connected {
+        if device(ui, palette, battery, animate) {
+            actions.push(Action::Open);
+        }
+    }
+    if !disconnected.is_empty() {
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new("Not connected")
+                .family(semibold())
+                .size(12.0)
+                .color(palette.weak),
+        );
+        for battery in disconnected {
+            absent(ui, palette, battery);
+        }
+    }
+}
+
+/// A device's card in the list. Returns whether it was clicked, which opens its details if it has any.
+fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool) -> bool {
     let [r, g, b] = level_color(battery.percent);
     let color = Color32::from_rgb(r, g, b);
-    card(ui, palette, |ui| {
-        ui.horizontal(|ui| {
-            let (badge, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
-            ui.painter()
-                .circle_filled(badge.center(), 18.0, color.gamma_multiply(0.15));
-            let glyph = match battery.kind {
-                Kind::Computer => LAPTOP,
-                Kind::Keyboard => KEYBOARD,
-                Kind::Mouse => MOUSE,
-                Kind::Headset => HEADSET,
-                Kind::Other => BATTERY,
-            };
-            let font = FontId::new(16.0, icons());
-            ui.painter()
-                .text(badge.center(), Align2::CENTER_CENTER, glyph, font, color);
+    let has_details = has_details(battery);
+    let id = ui.make_persistent_id(("device", &battery.name, &battery.connection));
 
-            // The percentage is placed first, so long names wrap in the remaining width instead of overlapping it.
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+    let card = card(ui, palette, has_details.then_some(id), |ui| {
+        let right = ui.max_rect().right();
+        let last_row = ui
+            .horizontal(|ui| {
+                badge(ui, battery.kind, color, color.gamma_multiply(0.15));
+                // The percentage is placed first, so long names wrap in the remaining width instead of overlapping it.
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let percent = RichText::new(format!("{}%", battery.percent))
+                        .family(semibold())
+                        .size(22.0);
+                    ui.label(percent.color(palette.text));
+                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
+                        let name = RichText::new(&battery.name).family(semibold()).size(14.0);
+                        ui.add(egui::Label::new(name.color(palette.text)).wrap());
+                        let source = ui.add(egui::Label::new(source(battery, palette.weak)).wrap());
+                        status_row(ui, palette, battery, color).map_or(source.rect, |row| row.rect)
+                    })
+                    .inner
+                })
+                .inner
+            })
+            .inner;
+
+        bar(
+            ui,
+            palette,
+            battery.percent,
+            color,
+            battery.power == Power::Charging && animate,
+        );
+        // The chevron sits below the percentage, on the line of the state.
+        pos2(right, last_row.center().y)
+    });
+
+    if has_details {
+        let color = if card.response.hovered() {
+            palette.text
+        } else {
+            palette.weak
+        };
+        let font = FontId::new(10.0, icons());
+        ui.painter()
+            .text(card.inner, Align2::RIGHT_CENTER, CHEVRON_RIGHT, font, color);
+    }
+    card.response.clicked()
+}
+
+/// The battery of one device in depth, below a header that leads back to the list.
+fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool, actions: &mut Vec<Action>) {
+    let [r, g, b] = level_color(battery.percent);
+    let color = Color32::from_rgb(r, g, b);
+
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        // The back arrow sits on the line of the name, and the connection below lines up with the name.
+        let indent = ui
+            .horizontal(|ui| {
+                let back = icon_button(ui, palette, BACK, palette.text, "Back");
+                if back {
+                    actions.push(Action::Back);
+                }
+                let name = RichText::new(&battery.name).family(semibold()).size(18.0);
+                let name = ui.add(egui::Label::new(name.color(palette.text)).wrap());
+                name.rect.left() - ui.min_rect().left()
+            })
+            .inner;
+        ui.horizontal(|ui| {
+            ui.add_space(indent);
+            ui.add(egui::Label::new(source(battery, palette.weak)).wrap());
+        });
+    });
+    ui.add_space(4.0);
+
+    card(ui, palette, None, |ui| {
+        ui.horizontal(|ui| {
+            badge(ui, battery.kind, color, color.gamma_multiply(0.15));
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                 let percent = RichText::new(format!("{}%", battery.percent))
                     .family(semibold())
-                    .size(22.0);
+                    .size(28.0);
                 ui.label(percent.color(palette.text));
+                status_row(ui, palette, battery, color);
+            });
+        });
+        bar(
+            ui,
+            palette,
+            battery.percent,
+            color,
+            battery.power == Power::Charging && animate,
+        );
+    });
+
+    if let Some(pack) = battery.pack {
+        card(ui, palette, None, |ui| health(ui, palette, &pack));
+    }
+}
+
+/// How much the battery holds compared to when it was new, followed by its cycles and power flow.
+fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
+    let percent = (pack.full as f32 / pack.design as f32 * 100.0).round().min(255.0) as u8;
+    let [r, g, b] = level_color(percent);
+    ui.horizontal(|ui| {
+        let label = RichText::new("Battery health").family(semibold()).size(14.0);
+        ui.label(label.color(palette.text));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let value = RichText::new(format!("{percent}%")).family(semibold()).size(14.0);
+            ui.label(value.color(palette.text));
+        });
+    });
+    bar(ui, palette, percent, Color32::from_rgb(r, g, b), false);
+    let wh = |mwh: u32| mwh as f32 / 1000.0;
+    let capacity = format!(
+        "Holds {:.1} Wh when full, {:.1} Wh when new",
+        wh(pack.full),
+        wh(pack.design)
+    );
+    ui.add(egui::Label::new(RichText::new(capacity).size(12.0).color(palette.weak)).wrap());
+
+    let mut rows = Vec::new();
+    if let Some(cycles) = pack.cycles {
+        rows.push(("Charge cycles", cycles.to_string()));
+    }
+    match pack.rate {
+        Some(rate) if rate > 0 => rows.push(("Charging power", watts(rate))),
+        Some(rate) if rate < 0 => rows.push(("Power draw", watts(rate))),
+        _ => {}
+    }
+    if !rows.is_empty() {
+        detail_rows(ui, palette, &rows);
+    }
+}
+
+/// A glyph as a borderless button, which gets a rounded background under the pointer. Returns whether it was clicked.
+fn icon_button(ui: &mut egui::Ui, palette: &Palette, glyph: &str, color: Color32, tooltip: &str) -> bool {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 6.0, palette.track);
+    }
+    let font = FontId::new(14.0, icons());
+    ui.painter()
+        .text(rect.center(), Align2::CENTER_CENTER, glyph, font, color);
+    response.on_hover_text(tooltip).clicked()
+}
+
+/// Only the computer's battery reports its capacity, which gives it more to show than its card.
+fn has_details(battery: &Battery) -> bool {
+    battery.pack.is_some()
+}
+
+/// A rounded bar filled up to `percent`, with a moving highlight while `charging`.
+fn bar(ui: &mut egui::Ui, palette: &Palette, percent: u8, color: Color32, charging: bool) {
+    let (bar, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover());
+    ui.painter().rect_filled(bar, 3.0, palette.track);
+    let mut fill = bar;
+    fill.set_width(bar.width() * f32::from(percent.min(100)) / 100.0);
+    ui.painter().rect_filled(fill, 3.0, color);
+    if charging {
+        shimmer(ui, fill);
+    }
+}
+
+/// A paired device that is out of reach, muted and without a bar, as its level may be outdated.
+fn absent(ui: &mut egui::Ui, palette: &Palette, battery: &Battery) {
+    card(ui, palette, None, |ui| {
+        ui.horizontal(|ui| {
+            badge(ui, battery.kind, palette.weak, palette.track);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                // Aligns the level with the name, and the time of its reading with the connection.
+                ui.with_layout(Layout::top_down(Align::Max), |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let percent = RichText::new(format!("{}%", battery.percent))
+                        .family(semibold())
+                        .size(16.0);
+                    ui.label(percent.color(palette.weak));
+                    if let Some(time) = battery.reported {
+                        // A time in the future, which a changed clock can cause, counts as just now.
+                        let age = ago(time.elapsed().unwrap_or_default());
+                        ui.label(RichText::new(age).size(11.0).color(palette.weak));
+                    }
+                });
                 ui.with_layout(Layout::top_down(Align::Min), |ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                     let name = RichText::new(&battery.name).family(semibold()).size(14.0);
                     ui.add(egui::Label::new(name.color(palette.text)).wrap());
                     ui.add(egui::Label::new(source(battery, palette.weak)).wrap());
-                    ui.add_space(4.0);
-                    state_chip(ui, palette, battery.charging, color);
                 });
             });
         });
-
-        let (bar, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover());
-        ui.painter().rect_filled(bar, 3.0, palette.track);
-        let mut fill = bar;
-        fill.set_width(bar.width() * f32::from(battery.percent) / 100.0);
-        ui.painter().rect_filled(fill, 3.0, color);
-        if battery.charging && animate {
-            shimmer(ui, fill);
-        }
     });
+}
+
+/// A round badge with the glyph of the device's kind.
+fn badge(ui: &mut egui::Ui, kind: Kind, color: Color32, fill: Color32) {
+    let (badge, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
+    ui.painter().circle_filled(badge.center(), 18.0, fill);
+    let glyph = match kind {
+        Kind::Computer => LAPTOP,
+        Kind::Keyboard => KEYBOARD,
+        Kind::Mouse => MOUSE,
+        Kind::Headset => HEADSET,
+        Kind::Other => BATTERY,
+    };
+    let font = FontId::new(16.0, icons());
+    ui.painter()
+        .text(badge.center(), Align2::CENTER_CENTER, glyph, font, color);
 }
 
 /// The manufacturer, followed by the connection behind a glyph of its kind, e.g. "Logitech [USB] USB Receiver".
@@ -288,27 +575,90 @@ fn source(battery: &Battery, color: Color32) -> LayoutJob {
     job
 }
 
-/// A small pill with the charging state, tinted in the level color while charging.
-fn state_chip(ui: &mut egui::Ui, palette: &Palette, charging: bool, color: Color32) {
-    let (fill, text) = if charging {
-        (color.gamma_multiply(0.15), color)
-    } else {
-        (palette.track, palette.weak)
+/// The power state as a chip, followed by the time estimate if there is one. Devices that report neither get none.
+fn status_row(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, color: Color32) -> Option<egui::Response> {
+    let [r, g, b] = level_color(0);
+    // Tinted in the level color while the battery fills or is full, and in red for a problem.
+    let (glyph, state, tint) = match battery.power {
+        Power::Charging => (Some(CHARGING), "Charging", Some(color)),
+        Power::Full => (Some(CHECK), "Fully charged", Some(color)),
+        // The pause glyph looks like two missing glyphs at this size, so the text stands alone.
+        Power::PluggedIn => (None, "Charging paused", None),
+        Power::Fault => (Some(WARNING), "Charging problem", Some(Color32::from_rgb(r, g, b))),
+        Power::Discharging if !battery.rechargeable => (None, "Replaceable battery", None),
+        Power::Discharging => (None, "On battery", None),
+        Power::Unknown => return None,
     };
-    Frame::new()
-        .fill(fill)
-        .corner_radius(8)
-        .inner_margin(Margin::symmetric(8, 2))
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            ui.horizontal(|ui| {
-                if charging {
-                    ui.label(icon(CHARGING, 10.0).color(text));
-                }
-                let state = if charging { "Charging" } else { "On battery" };
-                ui.label(RichText::new(state).family(semibold()).size(11.0).color(text));
+    let estimate = battery.remaining.map(duration).and_then(|time| match battery.power {
+        Power::Charging => Some(format!("{time} until full")),
+        Power::Discharging => Some(format!("{time} left")),
+        _ => None,
+    });
+
+    ui.add_space(4.0);
+    // The estimate moves below the chip when both don't fit next to the percentage.
+    let row = ui.horizontal_wrapped(|ui| {
+        let (fill, text) = match tint {
+            Some(tint) => (tint.gamma_multiply(0.15), tint),
+            None => (palette.track, palette.weak),
+        };
+        Frame::new()
+            .fill(fill)
+            .corner_radius(8)
+            .inner_margin(Margin::symmetric(8, 2))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.horizontal(|ui| {
+                    if let Some(glyph) = glyph {
+                        ui.label(icon(glyph, 10.0).color(text));
+                    }
+                    ui.label(RichText::new(state).family(semibold()).size(11.0).color(text));
+                });
+            });
+        if let Some(estimate) = estimate {
+            ui.label(RichText::new(estimate).size(12.0).color(palette.weak));
+        }
+    });
+    Some(row.response)
+}
+
+/// Labels on the left and values on the right, below a divider.
+fn detail_rows(ui: &mut egui::Ui, palette: &Palette, rows: &[(&str, String)]) {
+    let (divider, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().rect_filled(divider, 0.0, palette.track);
+    ui.spacing_mut().item_spacing.y = 6.0;
+    for (label, value) in rows {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(*label).size(12.0).color(palette.weak));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(RichText::new(value).size(12.0).color(palette.text));
             });
         });
+    }
+}
+
+/// The amount of a power flow in milliwatts, in either direction, e.g. "7.9 W".
+fn watts(rate: i32) -> String {
+    format!("{:.1} W", rate.unsigned_abs() as f32 / 1000.0)
+}
+
+/// A duration in hours and minutes, e.g. "2 h 5 min".
+fn duration(time: Duration) -> String {
+    let minutes = (time.as_secs() + 30) / 60;
+    match (minutes / 60, minutes % 60) {
+        (0, minutes) => format!("{} min", minutes.max(1)),
+        (hours, 0) => format!("{hours} h"),
+        (hours, minutes) => format!("{hours} h {minutes} min"),
+    }
+}
+
+/// How long ago something happened, e.g. "5 min ago".
+fn ago(elapsed: Duration) -> String {
+    match elapsed.as_secs() / 60 {
+        0 => "just now".into(),
+        minutes @ 1..60 => format!("{minutes} min ago"),
+        minutes => format!("{} h ago", minutes / 60),
+    }
 }
 
 /// Sweeps a soft highlight along the filled part of a charging battery's bar.
@@ -332,28 +682,52 @@ fn shimmer(ui: &egui::Ui, fill: egui::Rect) {
         mesh.add_triangle(i, i + 1, i + 2);
         mesh.add_triangle(i + 1, i + 2, i + 3);
     }
-    // Keep the highlight off the bar's rounded ends.
-    let clip = fill.shrink2(Vec2::new(fill.height() / 2.0, 0.0));
+    // Keep the highlight off the bar's rounded ends, and out of view while its page slides.
+    let clip = fill
+        .shrink2(Vec2::new(fill.height() / 2.0, 0.0))
+        .intersect(ui.clip_rect());
     ui.painter().with_clip_rect(clip).add(mesh);
     // About 30 frames per second is smooth enough for this and saves power.
     ui.ctx().request_repaint_after(Duration::from_millis(33));
 }
 
-fn card(ui: &mut egui::Ui, palette: &Palette, content: impl FnOnce(&mut egui::Ui)) {
-    Frame::new()
+/// A rounded panel. Given an `id`, it lights up under the pointer and its response tells about clicks.
+fn card<R>(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    id: Option<Id>,
+    content: impl FnOnce(&mut egui::Ui) -> R,
+) -> InnerResponse<R> {
+    let mut prepared = Frame::new()
         .fill(palette.card)
         .corner_radius(10)
         .inner_margin(14)
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            content(ui);
-        });
+        .begin(ui);
+    let width = prepared.content_ui.available_width();
+    prepared.content_ui.set_width(width);
+    let inner = content(&mut prepared.content_ui);
+    let mut response = prepared.allocate_space(ui);
+    // Cards on a page that is only measured mustn't react, not even with the pointer's shape.
+    if let Some(id) = id.filter(|_| ui.is_enabled()) {
+        // Registered after the content, so the card takes the clicks on top of its texts.
+        response = ui
+            .interact(response.rect, id.with("card"), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        if response.hovered() {
+            prepared.frame.fill = palette.hover;
+        }
+    }
+    // The fill is decided only now, as it depends on the pointer.
+    prepared.paint(ui);
+    InnerResponse::new(inner, response)
 }
 
 /// Neutral colors in the style of Windows 11 flyouts.
 struct Palette {
     background: Color32,
     card: Color32,
+    /// A card under the pointer.
+    hover: Color32,
     text: Color32,
     weak: Color32,
     track: Color32,
@@ -365,6 +739,7 @@ impl Palette {
             Self {
                 background: Color32::from_rgb(0x20, 0x20, 0x20),
                 card: Color32::from_rgb(0x2b, 0x2b, 0x2b),
+                hover: Color32::from_rgb(0x32, 0x32, 0x32),
                 text: Color32::from_rgb(0xff, 0xff, 0xff),
                 weak: Color32::from_rgb(0xa0, 0xa0, 0xa0),
                 track: Color32::from_rgb(0x3d, 0x3d, 0x3d),
@@ -373,6 +748,7 @@ impl Palette {
             Self {
                 background: Color32::from_rgb(0xf3, 0xf3, 0xf3),
                 card: Color32::from_rgb(0xff, 0xff, 0xff),
+                hover: Color32::from_rgb(0xf9, 0xf9, 0xf9),
                 text: Color32::from_rgb(0x1a, 0x1a, 0x1a),
                 weak: Color32::from_rgb(0x6b, 0x6b, 0x6b),
                 track: Color32::from_rgb(0xe3, 0xe3, 0xe3),

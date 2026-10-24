@@ -1,6 +1,6 @@
 //! Minimal HID++ 2.0 client reading the battery state of Logitech devices.
 
-use crate::battery::{Battery, Kind, Link};
+use crate::battery::{Battery, Kind, Link, Power};
 use hidapi::{HidApi, HidDevice};
 use std::time::{Duration, Instant};
 
@@ -32,6 +32,7 @@ struct Channel {
     /// Manufacturer and product strings from the USB descriptor of the receiver or wired device.
     manufacturer: String,
     product: String,
+    product_id: u16,
 }
 
 fn channels(api: &HidApi) -> Vec<Channel> {
@@ -55,6 +56,7 @@ fn channels(api: &HidApi) -> Vec<Channel> {
                 long,
                 manufacturer: info.manufacturer_string().unwrap_or_default().to_string(),
                 product: info.product_string().unwrap_or_default().to_string(),
+                product_id: info.product_id(),
             })
         })
         .collect()
@@ -75,6 +77,19 @@ impl Channel {
         let feature = self.feature(index, UNIFIED_BATTERY).filter(|&f| f != 0)?;
         // Response: state of charge in percent, level flags, charging status, external power.
         let status = self.request(index, feature, 1, &[])?;
+        // Response: supported levels, then flags with bit 0 set for rechargeable batteries.
+        let rechargeable = self
+            .request(index, feature, 0, &[])
+            .is_none_or(|capabilities| capabilities[1] & 1 != 0);
+        let power = match status[2] {
+            0 if status[3] != 0 => Power::PluggedIn,
+            0 => Power::Discharging,
+            // Charging at normal or at slow speed.
+            1 | 2 => Power::Charging,
+            3 => Power::Full,
+            4 => Power::Fault,
+            _ => Power::Unknown,
+        };
         let (name, kind) = self
             .identity(index)
             .unwrap_or_else(|| (format!("Device {index}"), Kind::Other));
@@ -82,7 +97,7 @@ impl Channel {
         let connection = if index == 0xff {
             "USB cable".into()
         } else {
-            self.product.clone()
+            receiver_name(self.product_id).map_or_else(|| self.product.clone(), String::from)
         };
         Some(Battery {
             name,
@@ -92,7 +107,12 @@ impl Channel {
             // Both the cable and the receivers plug into a USB port.
             link: Link::Usb,
             percent: status[0],
-            charging: matches!(status[2], 1..=3),
+            power,
+            rechargeable,
+            remaining: None,
+            pack: None,
+            reported: None,
+            connected: true,
         })
     }
 
@@ -143,5 +163,16 @@ impl Channel {
             }
         }
         None
+    }
+}
+
+/// Names the receiver families by their USB product ids, as listed by Solaar, since all of them call themselves
+/// "USB Receiver".
+fn receiver_name(product_id: u16) -> Option<&'static str> {
+    match product_id {
+        0xc548 => Some("Bolt receiver"),
+        0xc52b | 0xc532 => Some("Unifying receiver"),
+        0xc539 | 0xc53a | 0xc53d | 0xc53f | 0xc541 | 0xc545 | 0xc547 | 0xc54d => Some("LIGHTSPEED receiver"),
+        _ => None,
     }
 }

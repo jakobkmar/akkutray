@@ -1,18 +1,38 @@
 //! Battery of the computer itself, e.g. a laptop.
 
-use crate::battery::{Battery, Kind, Link};
-use std::ptr::null_mut;
-use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+use crate::battery::{Battery, Kind, Link, Pack, Power};
+use std::ffi::OsString;
+use std::fs::File;
+use std::os::windows::ffi::OsStringExt;
+use std::os::windows::io::AsRawHandle;
+use std::ptr::{null, null_mut};
+use std::time::Duration;
+use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+    CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CR_SUCCESS,
+};
+use windows_sys::Win32::System::IO::DeviceIoControl;
+use windows_sys::Win32::System::Power::{
+    BATTERY_CAPACITY_RELATIVE, BATTERY_INFORMATION, BATTERY_QUERY_INFORMATION, BATTERY_STATUS,
+    BATTERY_UNKNOWN_CAPACITY, BATTERY_UNKNOWN_RATE, BATTERY_WAIT_STATUS, BatteryInformation, GUID_DEVICE_BATTERY,
+    GetSystemPowerStatus, IOCTL_BATTERY_QUERY_INFORMATION, IOCTL_BATTERY_QUERY_STATUS, IOCTL_BATTERY_QUERY_TAG,
+    SYSTEM_POWER_STATUS,
+};
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
 use windows_sys::core::PCWSTR;
 use windows_sys::w;
 
 /// `BatteryFlag` bit of computers without a battery.
 const NO_BATTERY: u8 = 0x80;
+/// `BatteryFlag` bit while the battery charges. Being plugged in alone doesn't mean it does.
+const CHARGING: u8 = 0x08;
 /// `BatteryLifePercent` value when Windows can't tell the level.
 const UNKNOWN_PERCENT: u8 = 255;
+/// `BatteryLifeTime` value when Windows can't estimate the time left, e.g. right after unplugging.
+const UNKNOWN_TIME: u32 = u32::MAX;
 /// `ACLineStatus` value when the power supply is plugged in.
 const AC_ONLINE: u8 = 1;
+/// Estimates beyond this come from a rate too small to be meaningful.
+const MAX_ESTIMATE: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub fn battery() -> Option<Battery> {
     let mut status = SYSTEM_POWER_STATUS::default();
@@ -23,6 +43,21 @@ pub fn battery() -> Option<Battery> {
     let name = firmware_value(w!("SystemProductName"))
         .or_else(|| std::env::var("COMPUTERNAME").ok())
         .unwrap_or_else(|| "This computer".into());
+    let power = match (status.ACLineStatus == AC_ONLINE, status.BatteryFlag & CHARGING != 0) {
+        (true, true) => Power::Charging,
+        (true, false) if status.BatteryLifePercent >= 100 => Power::Full,
+        (true, false) => Power::PluggedIn,
+        (false, _) => Power::Discharging,
+    };
+    let pack = pack();
+    let remaining = match power {
+        // Windows smooths its estimate over a while, so it is steadier than one computed from the current rate.
+        Power::Discharging if status.BatteryLifeTime != UNKNOWN_TIME => {
+            Some(Duration::from_secs(status.BatteryLifeTime.into()))
+        }
+        Power::Discharging | Power::Charging => pack.and_then(|pack| time_at_rate(&pack)),
+        _ => None,
+    };
     Some(Battery {
         name,
         kind: Kind::Computer,
@@ -30,8 +65,115 @@ pub fn battery() -> Option<Battery> {
         connection: "Built-in battery".into(),
         link: Link::Builtin,
         percent: status.BatteryLifePercent,
-        charging: status.ACLineStatus == AC_ONLINE,
+        power,
+        rechargeable: true,
+        remaining,
+        pack,
+        reported: None,
+        connected: true,
     })
+}
+
+/// Time until the battery is full while charging, or empty while discharging, at its current rate.
+fn time_at_rate(pack: &Pack) -> Option<Duration> {
+    let rate = pack.rate.filter(|&rate| rate != 0)?;
+    let energy = if rate > 0 {
+        pack.full.saturating_sub(pack.now)
+    } else {
+        pack.now
+    };
+    let hours = energy as f32 / rate.unsigned_abs() as f32;
+    Some(Duration::from_secs_f32(hours * 3600.0)).filter(|&time| time < MAX_ESTIMATE)
+}
+
+/// Reads the capacity and wear of every battery from its driver.
+fn pack() -> Option<Pack> {
+    battery_paths()
+        .into_iter()
+        .filter_map(|path| query(&File::open(path).ok()?))
+        .reduce(|a, b| Pack {
+            now: a.now + b.now,
+            full: a.full + b.full,
+            design: a.design + b.design,
+            rate: a.rate.zip(b.rate).map(|(a, b)| a + b),
+            cycles: a.cycles.max(b.cycles),
+        })
+}
+
+fn query(battery: &File) -> Option<Pack> {
+    // A zero timeout returns the tag at once, which identifies the battery that is inserted right now.
+    let tag: u32 = ioctl(battery, IOCTL_BATTERY_QUERY_TAG, &0u32).filter(|&tag| tag != 0)?;
+    let info: BATTERY_INFORMATION = ioctl(
+        battery,
+        IOCTL_BATTERY_QUERY_INFORMATION,
+        &BATTERY_QUERY_INFORMATION {
+            BatteryTag: tag,
+            InformationLevel: BatteryInformation,
+            AtRate: 0,
+        },
+    )?;
+    let status: BATTERY_STATUS = ioctl(
+        battery,
+        IOCTL_BATTERY_QUERY_STATUS,
+        &BATTERY_WAIT_STATUS {
+            BatteryTag: tag,
+            ..Default::default()
+        },
+    )?;
+    // Some batteries report their capacity in percent rather than in milliwatt-hours, which says nothing about wear.
+    let capacities = [info.DesignedCapacity, info.FullChargedCapacity, status.Capacity];
+    if info.Capabilities & BATTERY_CAPACITY_RELATIVE != 0
+        || info.DesignedCapacity == 0
+        || capacities.contains(&BATTERY_UNKNOWN_CAPACITY)
+    {
+        return None;
+    }
+    Some(Pack {
+        now: status.Capacity,
+        full: info.FullChargedCapacity,
+        design: info.DesignedCapacity,
+        rate: (status.Rate != BATTERY_UNKNOWN_RATE as i32).then_some(status.Rate),
+        // Batteries that don't count their cycles report 0.
+        cycles: (info.CycleCount != 0).then_some(info.CycleCount),
+    })
+}
+
+/// Sends a request to a battery driver, with the input and output types its control code expects.
+fn ioctl<I, O: Default>(battery: &File, code: u32, input: &I) -> Option<O> {
+    let mut output = O::default();
+    let mut returned = 0;
+    let ok = unsafe {
+        DeviceIoControl(
+            battery.as_raw_handle(),
+            code,
+            (input as *const I).cast(),
+            size_of::<I>() as u32,
+            (&mut output as *mut O).cast(),
+            size_of::<O>() as u32,
+            &mut returned,
+            null_mut(),
+        )
+    } != 0;
+    (ok && returned as usize == size_of::<O>()).then_some(output)
+}
+
+/// Device paths of all batteries.
+fn battery_paths() -> Vec<OsString> {
+    let flags = CM_GET_DEVICE_INTERFACE_LIST_PRESENT;
+    let mut len = 0;
+    if unsafe { CM_Get_Device_Interface_List_SizeW(&mut len, &GUID_DEVICE_BATTERY, null(), flags) } != CR_SUCCESS {
+        return Vec::new();
+    }
+    let mut list = vec![0u16; len as usize];
+    if unsafe { CM_Get_Device_Interface_ListW(&GUID_DEVICE_BATTERY, null(), list.as_mut_ptr(), len, flags) }
+        != CR_SUCCESS
+    {
+        return Vec::new();
+    }
+    list.split(|&c| c == 0)
+        .filter(|path| !path.is_empty())
+        .map(OsString::from_wide)
+        .collect()
 }
 
 /// Reads a value of the SMBIOS system information, which Windows mirrors in the registry.

@@ -10,7 +10,7 @@ eframe = { version = "0.37", default-features = false, features = ["glow", "defa
 hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
 raw-window-handle = "0.6"
 tray-icon = "0.26"
-windows-sys = { version = "0.61", features = ["Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Properties", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Console", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Wdk_Devices_Bluetooth", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Properties", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Console", "Win32_System_IO", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 lto = true

@@ -34,7 +34,10 @@ fn main() -> ExitCode {
 }
 
 fn status() -> ExitCode {
-    let batteries = battery::scan();
+    let batteries: Vec<_> = battery::scan()
+        .into_iter()
+        .filter(|battery| battery.connected)
+        .collect();
     if batteries.is_empty() {
         eprintln!("No device with battery found");
         return ExitCode::FAILURE;
