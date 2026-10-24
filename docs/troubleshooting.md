@@ -19,9 +19,8 @@ This is normal. A sleeping keyboard or mouse has to wake up before it can answer
 
 ## The computer shows "Charging paused" while plugged in
 
-Windows reports that the battery isn't charging, even though the power supply is connected. Usually a charge limit
-holds it below full to make it last longer, such as *Battery Health Charging* on ASUS laptops or *Conservation Mode* on
-Lenovo laptops. Turn the limit off in the manufacturer's app if you need a full battery.
+A charge limit, such as *Battery Health Charging* on ASUS or *Conservation Mode* on Lenovo laptops, holds the battery
+below full to make it last longer. Turn it off in the manufacturer's app if you need a full battery.
 
 ## The tray icon doesn't show up
 

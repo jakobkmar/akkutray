@@ -28,14 +28,8 @@ G915 X LS TKL: 96%
 Bose QC Ultra Headphones: 60%
 ```
 
-Each line is one connected device with its battery level, followed by its power state while it is plugged in:
-
-| Suffix | Meaning |
-| --- | --- |
-| `(charging)` | The battery is charging. |
-| `(plugged in, not charging)` | The battery holds its level, e.g. because a charge limit keeps it below full. |
-| `(full)` | The battery is full. |
-| `(charging problem)` | The device reports that it can't charge. |
+Each line is one device with its battery level. While a device is plugged in, its power state is added: `(charging)`,
+`(full)`, `(plugged in, not charging)` or `(charging problem)`.
 
 - **This computer comes first**, if it has a battery. It is named after the model its firmware reports, or after
   the computer name if the firmware reports none.
@@ -69,23 +63,8 @@ runs out first.
 | Left click | A small window opens at the icon, showing each device with its level and power state. Click elsewhere or press <kbd>Esc</kbd> to close it. |
 | Right click | A menu lists the devices and offers **Refresh** and **Quit**. |
 
-### The window
-
-Each device has a card with its battery level and, below its name, a chip with its power state: *On battery*,
-*Charging*, *Fully charged*, *Charging paused* (plugged in, but held at its level, e.g. by a charge limit) or
-*Charging problem*. Devices running on disposable batteries show *Replaceable battery* instead of *On battery*.
-Bluetooth devices don't report their power state, so they show no chip.
-
-- **Time estimate.** This computer shows how long its battery lasts, or how long until it is full while charging.
-- **Battery health.** The card of this computer has an arrow: click it to open its details. They show how much the
-  battery holds compared to when it was new, its charge cycles and the power flowing in or out. The back arrow or
-  <kbd>Esc</kbd> returns to the list.
-- **Not connected.** Bluetooth devices that were connected within the last 24 hours, but are switched off or out of
-  reach now, appear muted at the bottom, with the level they last reported and how long ago that was. They don't
-  count for the tray icon.
-
-Charging devices get a moving highlight on their bar, unless *Animation effects* are turned off in the Windows
-settings. Turning them off also makes the details appear at once instead of sliding in.
+Click this computer in the window to see its battery health. Bluetooth devices disconnected within the last day are
+listed muted with their last level.
 
 ### When it updates
 

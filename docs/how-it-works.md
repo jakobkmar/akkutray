@@ -9,14 +9,9 @@ names from `data/names.txt`:
 
 ## This computer
 
-The battery level, charging state and time estimate come from the Windows `GetSystemPowerStatus` API. Being
-plugged in doesn't mean charging: a charge limit can hold the battery at its level, which the API tells apart.
-
-The capacity, wear, charge cycles and the current power flow come from the battery driver itself, through
-`IOCTL_BATTERY_QUERY_INFORMATION` and `IOCTL_BATTERY_QUERY_STATUS`. Computers with several batteries get their sum.
-While charging, the time until full is computed from the current power flow.
-
-The model and manufacturer come from the SMBIOS system information, which Windows mirrors in the registry under
+The battery level, charging state and time estimate come from the Windows `GetSystemPowerStatus` API. The capacity,
+charge cycles and power flow come from the battery driver through `IOCTL_BATTERY_QUERY_INFORMATION` and
+`IOCTL_BATTERY_QUERY_STATUS`. The model and manufacturer come from the SMBIOS system information, which Windows mirrors in the registry under
 `HKLM\HARDWARE\DESCRIPTION\System\BIOS`.
 
 ## Logitech devices
@@ -28,21 +23,14 @@ akkutray sends a battery request to every device slot of every receiver, and to 
 answers. G Hub talks to the same interface, so akkutray uses its own software id to keep its answers apart from
 those for G Hub.
 
-Besides the level, the answer tells whether the device is charging, full, plugged in without charging, or unable to
-charge. The battery capabilities tell whether it is rechargeable at all. As every receiver calls itself "USB
-Receiver", akkutray names Bolt, Unifying and LIGHTSPEED receivers by their USB product ids.
+As every receiver calls itself "USB Receiver", akkutray names them by their USB product ids.
 
 ## Bluetooth devices
 
-Windows stores the battery level of a Bluetooth device as a property on one of the device's profile nodes, together
-with the time it received it. akkutray reads both with the Configuration Manager API, then takes the name,
-connection state and vendor id from the device node in the same device container.
-
-Paired devices that are switched off keep their last level. akkutray shows them as not connected only if that level
-is less than a day old, so devices unused for long don't clutter the window.
-
-Windows names Microsoft as the manufacturer of every Bluetooth device, after its driver. akkutray looks up the vendor
-id the device reports in `data/vendors.txt` instead.
+Windows stores the battery level of a Bluetooth device, and when it was received, as a property on one of the
+device's profile nodes. akkutray reads it with the Configuration Manager API, then takes the name, connection state
+and vendor id from the device node in the same device container. Switched-off devices are only listed while their
+last level is less than a day old. The manufacturer is looked up by vendor id in `data/vendors.txt`.
 
 ## Code layout
 
