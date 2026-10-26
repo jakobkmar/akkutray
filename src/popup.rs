@@ -5,11 +5,13 @@ use crate::platform::popup::glyph::{
 };
 use crate::tray::Shared;
 use eframe::egui::emath::easing;
+use eframe::egui::epaint::PathStroke;
 use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
     self, Align, Align2, Color32, CursorIcon, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, InnerResponse,
-    Key, Layout, Margin, Pos2, Rect, RichText, Sense, UiBuilder, Vec2, ViewportCommand, pos2,
+    Key, Layout, Margin, Pos2, Rect, RichText, Sense, Stroke, UiBuilder, Vec2, ViewportCommand, pos2,
 };
+use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -397,31 +399,108 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
 
     card(ui, palette, None, |ui| {
         ui.horizontal(|ui| {
-            badge(ui, battery.kind, color, color.gamma_multiply(0.15));
-            ui.vertical(|ui| {
+            let charging = battery.power == Power::Charging && animate;
+            let ring = ring(ui, palette, battery.percent, color, charging);
+            ui.add_space(8.0);
+            centered(ui, ring.height(), |ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
-                let percent = RichText::new(format!("{}%", battery.percent))
-                    .family(semibold())
-                    .size(28.0);
-                ui.label(percent.color(palette.text));
                 status_row(ui, palette, battery, color);
+                if let Some(pack) = battery.pack {
+                    let stored = format!("{} of {}", watt_hours(pack.now), watt_hours(pack.full));
+                    ui.label(RichText::new(stored).size(12.0).color(palette.weak));
+                }
             });
         });
-        bar(
-            ui,
-            palette,
-            battery.percent,
-            color,
-            battery.power == Power::Charging && animate,
-        );
     });
 
-    if let Some(pack) = battery.pack {
-        card(ui, palette, None, |ui| health(ui, palette, &pack));
+    let Some(pack) = battery.pack else { return };
+    card(ui, palette, None, |ui| health(ui, palette, &pack));
+    let mut stats = Vec::new();
+    if let Some(cycles) = pack.cycles {
+        stats.push(("Charge cycles", cycles.to_string()));
+    }
+    match pack.rate {
+        Some(rate) if rate > 0 => stats.push(("Charging power", watts(rate))),
+        Some(rate) if rate < 0 => stats.push(("Power draw", watts(rate))),
+        _ => {}
+    }
+    if !stats.is_empty() {
+        ui.columns(stats.len(), |columns| {
+            for (ui, (label, value)) in columns.iter_mut().zip(&stats) {
+                stat(ui, palette, label, value);
+            }
+        });
     }
 }
 
-/// How much the battery holds compared to when it was new, followed by its cycles and power flow.
+/// A ring filled clockwise from the top up to `percent` around the percentage, with a moving highlight while
+/// `charging`. Returns where it was placed.
+fn ring(ui: &mut egui::Ui, palette: &Palette, percent: u8, color: Color32, charging: bool) -> Rect {
+    const WIDTH: f32 = 8.0;
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(88.0), Sense::hover());
+    let center = rect.center();
+    let radius = (rect.width() - WIDTH) / 2.0;
+    let painter = ui.painter();
+    painter.circle_stroke(center, radius, Stroke::new(WIDTH, palette.track));
+
+    if percent > 0 {
+        let sweep = TAU * f32::from(percent.min(100)) / 100.0;
+        let point = |angle: f32| center + radius * Vec2::angled(angle - FRAC_PI_2);
+        // A vertex every 2 points of the arc keeps it round.
+        let steps = (sweep * radius / 2.0).ceil() as usize;
+        let arc = (0..=steps).map(|i| point(sweep * i as f32 / steps as f32)).collect();
+        let stroke = if charging {
+            // The highlight sweeps along the arc like the one on the bars.
+            let half = 24.0 / radius;
+            let head = sweep_phase(ui) * (sweep + 2.0 * half) - half;
+            PathStroke::new_uv(WIDTH, move |_, pos| {
+                let angle = ((pos - center).angle() + FRAC_PI_2).rem_euclid(TAU);
+                let light = (1.0 - (angle - head).abs() / half).max(0.0);
+                color.lerp_to_gamma(Color32::WHITE, light * 0.47)
+            })
+        } else {
+            PathStroke::new(WIDTH, color)
+        };
+        painter.line(arc, stroke);
+        // Rounds off the ends of the arc.
+        for angle in [0.0, sweep] {
+            painter.circle_filled(point(angle), WIDTH / 2.0, color);
+        }
+    }
+
+    let font = FontId::new(22.0, semibold());
+    painter.text(center, Align2::CENTER_CENTER, format!("{percent}%"), font, palette.text);
+    rect
+}
+
+/// Lays out `content` in the rest of a row, centered on the row's `height`. As egui only centers single widgets, the
+/// content is measured first.
+fn centered(ui: &mut egui::Ui, height: f32, content: impl Fn(&mut egui::Ui)) {
+    let rect = ui.available_rect_before_wrap();
+    let layout = Layout::top_down(Align::Min);
+    let mut measure = ui.new_child(
+        UiBuilder::new()
+            .id_salt("measure")
+            .max_rect(rect)
+            .layout(layout)
+            .invisible(),
+    );
+    content(&mut measure);
+    let top = rect.top() + ((height - measure.min_rect().height()) / 2.0).max(0.0);
+    ui.scope_builder(UiBuilder::new().max_rect(rect.with_min_y(top)).layout(layout), content);
+}
+
+/// A small card with a value below its label.
+fn stat(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str) {
+    card(ui, palette, None, |ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.label(RichText::new(label).size(12.0).color(palette.weak));
+        let value = RichText::new(value).family(semibold()).size(18.0);
+        ui.label(value.color(palette.text));
+    });
+}
+
+/// How much the battery holds compared to when it was new.
 fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
     let percent = (pack.full as f32 / pack.design as f32 * 100.0).round().min(255.0) as u8;
     let [r, g, b] = level_color(percent);
@@ -434,26 +513,12 @@ fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
         });
     });
     bar(ui, palette, percent, Color32::from_rgb(r, g, b), false);
-    let wh = |mwh: u32| mwh as f32 / 1000.0;
     let capacity = format!(
-        "Holds {:.1} Wh when full, {:.1} Wh when new",
-        wh(pack.full),
-        wh(pack.design)
+        "Holds {} when full, {} when new",
+        watt_hours(pack.full),
+        watt_hours(pack.design)
     );
     ui.add(egui::Label::new(RichText::new(capacity).size(12.0).color(palette.weak)).wrap());
-
-    let mut rows = Vec::new();
-    if let Some(cycles) = pack.cycles {
-        rows.push(("Charge cycles", cycles.to_string()));
-    }
-    match pack.rate {
-        Some(rate) if rate > 0 => rows.push(("Charging power", watts(rate))),
-        Some(rate) if rate < 0 => rows.push(("Power draw", watts(rate))),
-        _ => {}
-    }
-    if !rows.is_empty() {
-        detail_rows(ui, palette, &rows);
-    }
 }
 
 /// A glyph as a borderless button, which gets a rounded background under the pointer. Returns whether it was clicked.
@@ -598,24 +663,14 @@ fn status_row(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, color: Co
     Some(row.response)
 }
 
-/// Labels on the left and values on the right, below a divider.
-fn detail_rows(ui: &mut egui::Ui, palette: &Palette, rows: &[(&str, String)]) {
-    let (divider, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
-    ui.painter().rect_filled(divider, 0.0, palette.track);
-    ui.spacing_mut().item_spacing.y = 6.0;
-    for (label, value) in rows {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(*label).size(12.0).color(palette.weak));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(RichText::new(value).size(12.0).color(palette.text));
-            });
-        });
-    }
-}
-
 /// The amount of a power flow in milliwatts, in either direction, e.g. "7.9 W".
 fn watts(rate: i32) -> String {
     format!("{:.1} W", rate.unsigned_abs() as f32 / 1000.0)
+}
+
+/// An amount of energy in milliwatt-hours, e.g. "52.3 Wh".
+fn watt_hours(energy: u32) -> String {
+    format!("{:.1} Wh", energy as f32 / 1000.0)
 }
 
 /// A duration in hours and minutes, e.g. "2 h 5 min".
@@ -637,12 +692,18 @@ fn ago(elapsed: Duration) -> String {
     }
 }
 
+/// How far the highlight of a charging battery has swept along its track, from 0 to 1. Keeps repainting to move it.
+fn sweep_phase(ui: &egui::Ui) -> f32 {
+    const PERIOD: f64 = 1.8;
+    // About 30 frames per second is smooth enough for this and saves power.
+    ui.ctx().request_repaint_after(Duration::from_millis(33));
+    (ui.input(|input| input.time) % PERIOD / PERIOD) as f32
+}
+
 /// Sweeps a soft highlight along the filled part of a charging battery's bar.
 fn shimmer(ui: &egui::Ui, fill: egui::Rect) {
-    const PERIOD: f64 = 1.8;
     let width = fill.height() * 8.0;
-    let phase = (ui.input(|input| input.time) % PERIOD / PERIOD) as f32;
-    let center = fill.left() - width / 2.0 + phase * (fill.width() + width);
+    let center = fill.left() - width / 2.0 + sweep_phase(ui) * (fill.width() + width);
     let light = Color32::from_white_alpha(120);
 
     let mut mesh = egui::Mesh::default();
@@ -663,8 +724,6 @@ fn shimmer(ui: &egui::Ui, fill: egui::Rect) {
         .shrink2(Vec2::new(fill.height() / 2.0, 0.0))
         .intersect(ui.clip_rect());
     ui.painter().with_clip_rect(clip).add(mesh);
-    // About 30 frames per second is smooth enough for this and saves power.
-    ui.ctx().request_repaint_after(Duration::from_millis(33));
 }
 
 /// A rounded panel. Given an `id`, it lights up under the pointer and its response tells about clicks.
