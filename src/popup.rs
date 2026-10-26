@@ -415,7 +415,10 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
 
     let Some(pack) = battery.pack else { return };
     card(ui, palette, None, |ui| health(ui, palette, &pack));
-    let mut stats = Vec::new();
+    let mut stats = vec![
+        ("Full charge", watt_hours(pack.full)),
+        ("Design capacity", watt_hours(pack.design)),
+    ];
     if let Some(cycles) = pack.cycles {
         stats.push(("Charge cycles", cycles.to_string()));
     }
@@ -424,9 +427,9 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
         Some(rate) if rate < 0 => stats.push(("Power draw", watts(rate))),
         _ => {}
     }
-    if !stats.is_empty() {
-        ui.columns(stats.len(), |columns| {
-            for (ui, (label, value)) in columns.iter_mut().zip(&stats) {
+    for row in stats.chunks(2) {
+        ui.columns(2, |columns| {
+            for (ui, (label, value)) in columns.iter_mut().zip(row) {
                 stat(ui, palette, label, value);
             }
         });
@@ -513,12 +516,6 @@ fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
         });
     });
     bar(ui, palette, percent, Color32::from_rgb(r, g, b), false);
-    let capacity = format!(
-        "Holds {} when full, {} when new",
-        watt_hours(pack.full),
-        watt_hours(pack.design)
-    );
-    ui.add(egui::Label::new(RichText::new(capacity).size(12.0).color(palette.weak)).wrap());
 }
 
 /// A glyph as a borderless button, which gets a rounded background under the pointer. Returns whether it was clicked.
