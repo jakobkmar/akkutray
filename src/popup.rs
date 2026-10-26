@@ -373,6 +373,7 @@ fn device(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool
 
 /// The battery of one device in depth, below a header that leads back to the list.
 fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate: bool, actions: &mut Vec<Action>) {
+    let Some(pack) = battery.pack else { return };
     let [r, g, b] = level_color(battery.percent);
     let color = Color32::from_rgb(r, g, b);
 
@@ -405,15 +406,12 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
             centered(ui, ring.height(), |ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                 status_row(ui, palette, battery, color);
-                if let Some(pack) = battery.pack {
-                    let stored = format!("{} of {}", watt_hours(pack.now), watt_hours(pack.full));
-                    ui.label(RichText::new(stored).size(12.0).color(palette.weak));
-                }
+                let stored = format!("{} of {}", watt_hours(pack.now), watt_hours(pack.full));
+                ui.label(RichText::new(stored).size(12.0).color(palette.weak));
             });
         });
     });
 
-    let Some(pack) = battery.pack else { return };
     card(ui, palette, None, |ui| health(ui, palette, &pack));
     let mut stats = Vec::new();
     if let Some(cycles) = pack.cycles {
@@ -515,33 +513,39 @@ fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
     // The track stands for the capacity when new, of which the hatched part can no longer be charged.
     let color = Color32::from_rgb(r, g, b);
     let (track, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 8.0), Sense::hover());
-    hatch(ui, palette, track, 4.0);
+    hatch(ui, palette, track);
     let mut fill = track;
     fill.set_width(track.width() * f32::from(percent.min(100)) / 100.0);
     ui.painter().rect_filled(fill, 4.0, color);
 
     ui.spacing_mut().item_spacing.y = 6.0;
     legend(ui, palette, "Full charge", watt_hours(pack.full), |ui, swatch| {
-        ui.painter().rect_filled(swatch, 2.0, color);
+        ui.painter()
+            .circle_filled(swatch.center(), swatch.height() / 2.0, color);
     });
     let lost = pack.design.saturating_sub(pack.full);
     if lost > 0 {
         legend(ui, palette, "Lost to wear", watt_hours(lost), |ui, swatch| {
-            hatch(ui, palette, swatch, 2.0);
+            hatch(ui, palette, swatch);
         });
     }
 }
 
-/// Diagonal stripes on the track color, which mark capacity that is lost.
-fn hatch(ui: &egui::Ui, palette: &Palette, rect: Rect, corner: f32) {
-    ui.painter().rect_filled(rect, corner, palette.track);
-    // Keeps the stripes off the rounded ends.
-    let clip = rect.shrink2(Vec2::new(corner, 0.0)).intersect(ui.clip_rect());
-    let painter = ui.painter().with_clip_rect(clip);
+/// A capsule of diagonal stripes on the track color, which marks capacity that is lost.
+fn hatch(ui: &egui::Ui, palette: &Palette, rect: Rect) {
+    let radius = rect.height() / 2.0;
+    ui.painter().rect_filled(rect, radius, palette.track);
     let stroke = Stroke::new(1.5, palette.weak.gamma_multiply(0.6));
+    let core = rect.shrink2(Vec2::new(radius, radius));
+    let inside = |point: Pos2| point.distance(core.clamp(point)) <= radius;
     let mut x = rect.left() - rect.height();
     while x < rect.right() {
-        painter.line_segment([pos2(x, rect.bottom()), pos2(x + rect.height(), rect.top())], stroke);
+        // Each stripe is cut to the samples along it that lie within the rounded ends.
+        let along = |i: usize| pos2(x, rect.bottom()) + rect.height() * Vec2::new(1.0, -1.0) * i as f32 / 16.0;
+        let points: Vec<Pos2> = (0..=16).map(along).filter(|&point| inside(point)).collect();
+        if let [first, .., last] = points[..] {
+            ui.painter().line_segment([first, last], stroke);
+        }
         x += 4.0;
     }
 }
