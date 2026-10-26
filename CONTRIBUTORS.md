@@ -42,3 +42,4 @@
 
 - Refactors keep every feature and behavior.
 - Before committing, run `cargo fmt` and `cargo clippy` with zero warnings.
+- Commit messages are short and concise and describe what the commit changes.
