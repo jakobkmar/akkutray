@@ -424,9 +424,9 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
         Some(rate) if rate < 0 => stats.push(("Power draw", watts(rate))),
         _ => {}
     }
-    for row in stats.chunks(2) {
-        ui.columns(2, |columns| {
-            for (ui, (label, value)) in columns.iter_mut().zip(row) {
+    if !stats.is_empty() {
+        ui.columns(stats.len(), |columns| {
+            for (ui, (label, value)) in columns.iter_mut().zip(&stats) {
                 stat(ui, palette, label, value);
             }
         });
