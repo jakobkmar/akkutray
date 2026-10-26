@@ -4,7 +4,7 @@
 //! - `host`: the computer's battery and model
 //! - `hidpp`: pairing of the HID collections of a HID++ device
 //! - `bluetooth`: battery levels that the system collects from Bluetooth devices
-//! - `tray`: event loop, single instance and detaching from the terminal
+//! - `tray`: event loop, single instance, notifications and detaching from the terminal
 //! - `popup`: native window, system fonts and settings
 //!
 //! A platform without a feature returns nothing for it, e.g. no Bluetooth devices, and the rest works as before.

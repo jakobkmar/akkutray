@@ -1,6 +1,7 @@
 use crate::battery::{self, Battery};
 use crate::platform::tray::{Event, Events, Notifier};
 use crate::{platform, popup};
+use std::collections::HashSet;
 use std::error::Error;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -8,6 +9,14 @@ use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
+/// Devices to warn about when their battery drops to a low level, once per device while the tray runs.
+#[derive(Default)]
+struct Warnings {
+    /// Devices whose last reading was above `popup::LOW_PERCENT`.
+    above: HashSet<String>,
+    warned: HashSet<String>,
+}
 
 #[derive(Default)]
 pub struct State {
@@ -66,14 +75,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         tray: events.notifier(),
     };
     let tray = TrayIconBuilder::new().with_menu_on_left_click(false).build()?;
-    update(&tray, &shared)?;
+    let mut warnings = Warnings::default();
+    update(&tray, &shared, &mut warnings)?;
     shared.refresh();
 
     let mut popup_closed: Option<Instant> = None;
     for event in events {
         match event {
             Event::Poll => shared.refresh(),
-            Event::Notified => update(&tray, &shared)?,
+            Event::Notified => update(&tray, &shared, &mut warnings)?,
             Event::Other => {}
         }
 
@@ -101,14 +111,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             popup::show(&shared, rect)?;
             popup_closed = Some(Instant::now());
             // Readings that arrived while the popup was open skipped this loop.
-            update(&tray, &shared)?;
+            update(&tray, &shared, &mut warnings)?;
         }
     }
     Ok(())
 }
 
-/// Shows the latest readings of connected devices in the tray icon, its tooltip and its menu.
-fn update(tray: &TrayIcon, shared: &Shared) -> Result<(), Box<dyn Error>> {
+/// Shows the latest readings of connected devices in the tray icon, its tooltip and its menu, and warns about
+/// devices whose battery dropped to a low level.
+fn update(tray: &TrayIcon, shared: &Shared, warnings: &mut Warnings) -> Result<(), Box<dyn Error>> {
     let state = shared.lock();
     let connected: Vec<&Battery> = state.batteries.iter().filter(|battery| battery.connected).collect();
     let lines: Vec<String> = connected.iter().map(|battery| battery.to_string()).collect();
@@ -130,6 +141,18 @@ fn update(tray: &TrayIcon, shared: &Shared) -> Result<(), Box<dyn Error>> {
     tray.set_menu(Some(Box::new(menu)));
     tray.set_tooltip(Some(tooltip))?;
     tray.set_icon(Some(icon(connected.iter().map(|battery| battery.percent).min())?))?;
+
+    for battery in &state.batteries {
+        if battery.percent > popup::LOW_PERCENT {
+            if !warnings.warned.contains(&battery.name) {
+                warnings.above.insert(battery.name.clone());
+            }
+        } else if warnings.above.remove(&battery.name) {
+            warnings.warned.insert(battery.name.clone());
+            let text = format!("{} is at {}%", battery.name, battery.percent);
+            platform::tray::notify(tray, "Low battery", &text);
+        }
+    }
     Ok(())
 }
 

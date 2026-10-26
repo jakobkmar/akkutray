@@ -1,13 +1,18 @@
-//! The message loop of the tray thread, a single tray at a time, and starting the tray without a console.
+//! The message loop of the tray thread, a single tray at a time, notifications and starting the tray without a
+//! console.
 
 use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::ptr::{null, null_mut};
 use std::time::Duration;
+use tray_icon::TrayIcon;
 use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
 use windows_sys::Win32::System::Console::GetConsoleWindow;
 use windows_sys::Win32::System::Threading::{
     CreateMutexW, DETACHED_PROCESS, GetCurrentThreadId, OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE,
+};
+use windows_sys::Win32::UI::Shell::{
+    NIF_INFO, NIIF_RESPECT_QUIET_TIME, NIIF_WARNING, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, GetSystemMetrics, MSG, PostThreadMessageW, SM_CXSMICON, SetCoalescableTimer,
@@ -101,6 +106,35 @@ pub fn claim() -> bool {
     unsafe {
         CreateMutexW(null(), 0, MUTEX_NAME);
         GetLastError() != ERROR_ALREADY_EXISTS
+    }
+}
+
+/// Shows a warning from the tray icon, which Windows shows as a notification.
+pub fn notify(tray: &TrayIcon, title: &str, text: &str) {
+    let mut data = NOTIFYICONDATAW {
+        cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+        hWnd: tray.window_handle(),
+        uFlags: NIF_INFO,
+        dwInfoFlags: NIIF_WARNING | NIIF_RESPECT_QUIET_TIME,
+        ..Default::default()
+    };
+    copy_wide(&mut data.szInfoTitle, title);
+    copy_wide(&mut data.szInfo, text);
+    // tray-icon doesn't expose the id it registers the icon with. It numbers its icons and ids from 1, and the window
+    // holds only this icon, so the first id Windows accepts is the icon's.
+    for id in 1..=16 {
+        data.uID = id;
+        if unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) } != 0 {
+            return;
+        }
+    }
+}
+
+/// Copies `from` into a fixed-size, null-terminated string, cutting it off if it doesn't fit.
+fn copy_wide(to: &mut [u16], from: &str) {
+    let len = to.len() - 1;
+    for (to, from) in to[..len].iter_mut().zip(from.encode_utf16()) {
+        *to = from;
     }
 }
 

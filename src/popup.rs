@@ -16,7 +16,8 @@ use std::time::{Duration, Instant};
 const WIDTH: f32 = 340.0;
 /// Minimum gap between the popup and the edges of the screen's work area, in points.
 const SCREEN_MARGIN: f32 = 12.0;
-const LOW_PERCENT: u8 = 20;
+/// Level at or below which a battery counts as low, shared with the tray's warnings.
+pub const LOW_PERCENT: u8 = 20;
 const MEDIUM_PERCENT: u8 = 50;
 /// Seconds the details page takes to slide in or out.
 const SLIDE_TIME: f32 = 0.25;

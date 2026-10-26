@@ -55,6 +55,9 @@ runs out first.
 | Red | 20% or below |
 | Empty outline | no device reachable |
 
+When a device drops from above 20% to 20% or below, Windows shows a **Low battery** notification. It comes once
+per device until the tray restarts.
+
 ### Interacting with it
 
 | Action | What happens |

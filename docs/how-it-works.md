@@ -41,7 +41,7 @@ last level is less than a day old. The manufacturer is looked up by vendor id in
 | `src/host.rs` | This computer |
 | `src/hidpp.rs` | Logitech HID++ protocol |
 | `src/bluetooth.rs` | Bluetooth devices |
-| `src/tray.rs` | Tray icon, menu and update timer |
+| `src/tray.rs` | Tray icon, menu, update timer and low battery warnings |
 | `src/popup.rs` | Window opened by a left click, built with [egui](https://github.com/emilk/egui) |
 | `src/platform/mod.rs` | Picks the code of the platform the program is built for |
 | `src/platform/windows/` | All calls to Windows, in one file for each of the modules above that needs them |
