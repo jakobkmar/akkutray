@@ -415,10 +415,7 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
 
     let Some(pack) = battery.pack else { return };
     card(ui, palette, None, |ui| health(ui, palette, &pack));
-    let mut stats = vec![
-        ("Full charge", watt_hours(pack.full)),
-        ("Design capacity", watt_hours(pack.design)),
-    ];
+    let mut stats = Vec::new();
     if let Some(cycles) = pack.cycles {
         stats.push(("Charge cycles", cycles.to_string()));
     }
@@ -515,7 +512,50 @@ fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
             ui.label(value.color(palette.text));
         });
     });
-    bar(ui, palette, percent, Color32::from_rgb(r, g, b), false);
+    // The track stands for the capacity when new, of which the hatched part can no longer be charged.
+    let color = Color32::from_rgb(r, g, b);
+    let (track, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 8.0), Sense::hover());
+    hatch(ui, palette, track, 4.0);
+    let mut fill = track;
+    fill.set_width(track.width() * f32::from(percent.min(100)) / 100.0);
+    ui.painter().rect_filled(fill, 4.0, color);
+
+    ui.spacing_mut().item_spacing.y = 6.0;
+    legend(ui, palette, "Full charge", watt_hours(pack.full), |ui, swatch| {
+        ui.painter().rect_filled(swatch, 2.0, color);
+    });
+    let lost = pack.design.saturating_sub(pack.full);
+    if lost > 0 {
+        legend(ui, palette, "Lost to wear", watt_hours(lost), |ui, swatch| {
+            hatch(ui, palette, swatch, 2.0);
+        });
+    }
+}
+
+/// Diagonal stripes on the track color, which mark capacity that is lost.
+fn hatch(ui: &egui::Ui, palette: &Palette, rect: Rect, corner: f32) {
+    ui.painter().rect_filled(rect, corner, palette.track);
+    // Keeps the stripes off the rounded ends.
+    let clip = rect.shrink2(Vec2::new(corner, 0.0)).intersect(ui.clip_rect());
+    let painter = ui.painter().with_clip_rect(clip);
+    let stroke = Stroke::new(1.5, palette.weak.gamma_multiply(0.6));
+    let mut x = rect.left() - rect.height();
+    while x < rect.right() {
+        painter.line_segment([pos2(x, rect.bottom()), pos2(x + rect.height(), rect.top())], stroke);
+        x += 4.0;
+    }
+}
+
+/// A line of a legend: a swatch painted by `swatch` and a label on the left, the value on the right.
+fn legend(ui: &mut egui::Ui, palette: &Palette, label: &str, value: String, swatch: impl FnOnce(&egui::Ui, Rect)) {
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+        swatch(ui, rect);
+        ui.label(RichText::new(label).size(12.0).color(palette.weak));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.label(RichText::new(value).size(12.0).color(palette.text));
+        });
+    });
 }
 
 /// A glyph as a borderless button, which gets a rounded background under the pointer. Returns whether it was clicked.
