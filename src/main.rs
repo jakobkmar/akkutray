@@ -2,13 +2,11 @@ mod battery;
 mod bluetooth;
 mod hidpp;
 mod host;
+mod platform;
 mod popup;
 mod tray;
 
-use std::os::windows::process::CommandExt;
 use std::process::{Command, ExitCode, Stdio};
-use windows_sys::Win32::System::Console::GetConsoleWindow;
-use windows_sys::Win32::System::Threading::DETACHED_PROCESS;
 
 const USAGE: &str = "\
 Usage: akkutray [command]
@@ -49,11 +47,11 @@ fn status() -> ExitCode {
 }
 
 fn tray() -> ExitCode {
-    if tray::is_running() {
+    if platform::tray::is_running() {
         println!("Tray is already running");
         return ExitCode::SUCCESS;
     }
-    if unsafe { GetConsoleWindow() }.is_null() {
+    if !platform::tray::has_console() {
         return match tray::run() {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {
@@ -64,9 +62,7 @@ fn tray() -> ExitCode {
     }
     // Relaunch without a console, so the tray neither blocks the terminal nor keeps a console window open.
     let child = std::env::current_exe().and_then(|exe| {
-        Command::new(exe)
-            .arg("tray")
-            .creation_flags(DETACHED_PROCESS)
+        platform::tray::detach(Command::new(exe).arg("tray"))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

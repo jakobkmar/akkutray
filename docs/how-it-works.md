@@ -43,5 +43,7 @@ last level is less than a day old. The manufacturer is looked up by vendor id in
 | `src/bluetooth.rs` | Bluetooth devices |
 | `src/tray.rs` | Tray icon, menu and update timer |
 | `src/popup.rs` | Window opened by a left click, built with [egui](https://github.com/emilk/egui) |
+| `src/platform/mod.rs` | Picks the code of the platform the program is built for |
+| `src/platform/windows/` | All calls to Windows, in one file for each of the modules above that needs them |
 | `data/names.txt` | Display names for unclearly named devices, compiled into the program |
 | `data/vendors.txt` | Manufacturer names of Bluetooth devices by vendor id, compiled into the program |

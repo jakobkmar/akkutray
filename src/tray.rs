@@ -1,26 +1,13 @@
 use crate::battery::{self, Battery};
-use crate::popup;
+use crate::platform::tray::{Event, Events, Notifier};
+use crate::{platform, popup};
 use std::error::Error;
-use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
-use windows_sys::Win32::System::Threading::{
-    CreateMutexW, GetCurrentThreadId, OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE,
-};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, GetSystemMetrics, MSG, PostThreadMessageW, SM_CXSMICON, SetCoalescableTimer,
-    TranslateMessage, WM_APP, WM_TIMER,
-};
-use windows_sys::core::PCWSTR;
-use windows_sys::w;
 
-const MUTEX_NAME: PCWSTR = w!("akkutray-tray");
-const POLL_INTERVAL_MS: u32 = 5 * 60 * 1000;
-/// Posted to the tray thread when new readings are available.
-const WM_READINGS: u32 = WM_APP;
+const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Default)]
 pub struct State {
@@ -35,7 +22,8 @@ pub struct State {
 #[derive(Clone)]
 pub struct Shared {
     state: Arc<Mutex<State>>,
-    tray_thread: u32,
+    /// Tells the tray thread when new readings are available.
+    tray: Notifier,
 }
 
 impl Shared {
@@ -62,53 +50,31 @@ impl Shared {
             if let Some(popup) = &state.popup {
                 popup.request_repaint();
             }
-            unsafe { PostThreadMessageW(shared.tray_thread, WM_READINGS, 0, 0) };
+            shared.tray.notify();
         });
-    }
-}
-
-pub fn is_running() -> bool {
-    unsafe {
-        let mutex = OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, 0, MUTEX_NAME);
-        if mutex.is_null() {
-            return false;
-        }
-        CloseHandle(mutex);
-        true
     }
 }
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     // Keep a single tray icon if two trays start at the same time, e.g. by autostart and by hand.
-    unsafe {
-        CreateMutexW(null(), 0, MUTEX_NAME);
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            return Ok(());
-        }
+    if !platform::tray::claim() {
+        return Ok(());
     }
+    let events = Events::new(POLL_INTERVAL);
     let shared = Shared {
         state: Default::default(),
-        tray_thread: unsafe { GetCurrentThreadId() },
+        tray: events.notifier(),
     };
     let tray = TrayIconBuilder::new().with_menu_on_left_click(false).build()?;
     update(&tray, &shared)?;
     shared.refresh();
-    // The tolerance lets Windows batch our wake-ups with other timers to save power.
-    unsafe { SetCoalescableTimer(null_mut(), 0, POLL_INTERVAL_MS, None, POLL_INTERVAL_MS / 10) };
 
     let mut popup_closed: Option<Instant> = None;
-    loop {
-        let mut msg = MSG::default();
-        if unsafe { GetMessageW(&mut msg, null_mut(), 0, 0) } <= 0 {
-            return Ok(());
-        }
-        match msg.message {
-            WM_TIMER if msg.hwnd.is_null() => shared.refresh(),
-            WM_READINGS if msg.hwnd.is_null() => update(&tray, &shared)?,
-            _ => unsafe {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            },
+    for event in events {
+        match event {
+            Event::Poll => shared.refresh(),
+            Event::Notified => update(&tray, &shared)?,
+            Event::Other => {}
         }
 
         while let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -138,6 +104,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             update(&tray, &shared)?;
         }
     }
+    Ok(())
 }
 
 /// Shows the latest readings of connected devices in the tray icon, its tooltip and its menu.
@@ -169,7 +136,7 @@ fn update(tray: &TrayIcon, shared: &Shared) -> Result<(), Box<dyn Error>> {
 /// Draws a battery filled up to `percent`, or an empty outline when no device is reachable.
 fn icon(percent: Option<u8>) -> Result<Icon, tray_icon::BadIcon> {
     const OUTLINE: [u8; 4] = [0x90, 0x90, 0x90, 0xff];
-    let size = unsafe { GetSystemMetrics(SM_CXSMICON) } as usize;
+    let size = platform::tray::icon_size();
     let [r, g, b] = popup::level_color(percent.unwrap_or(0));
 
     // Shapes are laid out on a 16x16 grid, scaled to the system icon size.

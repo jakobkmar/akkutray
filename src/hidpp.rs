@@ -1,6 +1,7 @@
 //! Minimal HID++ 2.0 client reading the battery state of Logitech devices.
 
 use crate::battery::{Battery, Kind, Link, Power};
+use crate::platform;
 use hidapi::{HidApi, HidDevice};
 use std::time::{Duration, Instant};
 
@@ -25,7 +26,7 @@ pub fn scan() -> Vec<Battery> {
     }
 }
 
-/// The HID++ interface of a receiver or wired device. Windows splits it into one HID collection per report type.
+/// The HID++ interface of a receiver or wired device, with a HID collection for each report type.
 struct Channel {
     short: HidDevice,
     long: HidDevice,
@@ -41,8 +42,7 @@ fn channels(api: &HidApi) -> Vec<Channel> {
             .filter(|d| d.vendor_id() == VENDOR_ID && d.usage_page() == USAGE_PAGE && d.usage() == usage)
             .filter_map(|d| {
                 let dev = d.open_device(api).ok()?;
-                let id = dev.get_container_id().ok()?;
-                Some(((id.data1, id.data2, id.data3, id.data4), dev, d))
+                Some((platform::hidpp::device_key(&dev)?, dev, d))
             })
             .collect::<Vec<_>>()
     };

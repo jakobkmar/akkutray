@@ -1,4 +1,8 @@
 use crate::battery::{Battery, Kind, Link, Pack, Power};
+use crate::platform;
+use crate::platform::popup::glyph::{
+    BACK, BATTERY, BLUETOOTH, CHARGING, CHECK, CHEVRON_RIGHT, HEADSET, KEYBOARD, LAPTOP, MOUSE, REFRESH, USB, WARNING,
+};
 use crate::tray::Shared;
 use eframe::egui::emath::easing;
 use eframe::egui::text::{LayoutJob, TextFormat};
@@ -6,16 +10,8 @@ use eframe::egui::{
     self, Align, Align2, Color32, CursorIcon, FontData, FontDefinitions, FontFamily, FontId, Frame, Id, InnerResponse,
     Key, Layout, Margin, Pos2, Rect, RichText, Sense, UiBuilder, Vec2, ViewportCommand, pos2,
 };
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use std::ptr::null_mut;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use windows_sys::Win32::Foundation::{HWND, POINT};
-use windows_sys::Win32::Graphics::Dwm::{DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute};
-use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    SPI_GETCLIENTAREAANIMATION, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, SystemParametersInfoW,
-};
 
 const WIDTH: f32 = 340.0;
 /// Minimum gap between the popup and the edges of the screen's work area, in points.
@@ -27,20 +23,22 @@ const SLIDE_TIME: f32 = 0.25;
 /// Room given to a page to lay itself out, far more than any page needs.
 const PAGE_MAX_HEIGHT: f32 = 4000.0;
 
-// Glyphs of the Segoe Fluent Icons font.
-const REFRESH: &str = "\u{e72c}";
-const CHARGING: &str = "\u{e945}";
-const LAPTOP: &str = "\u{e7f8}";
-const KEYBOARD: &str = "\u{e765}";
-const MOUSE: &str = "\u{e962}";
-const HEADSET: &str = "\u{e7f6}";
-const BATTERY: &str = "\u{e83f}";
-const USB: &str = "\u{e88e}";
-const BLUETOOTH: &str = "\u{e702}";
-const CHECK: &str = "\u{e73e}";
-const WARNING: &str = "\u{e7ba}";
-const CHEVRON_RIGHT: &str = "\u{e76c}";
-const BACK: &str = "\u{e72b}";
+/// A rectangle on the screen, in physical pixels.
+#[derive(Clone, Copy, PartialEq)]
+pub struct Bounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// The fonts of the popup, which the system provides.
+pub enum Font {
+    Text,
+    Semibold,
+    /// The font of the glyphs in `platform::popup::glyph`.
+    Icons,
+}
 
 /// Color for a battery level, shared with the tray icon.
 pub fn level_color(percent: u8) -> [u8; 3] {
@@ -73,8 +71,7 @@ pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
 struct Popup<'a> {
     shared: &'a Shared,
     anchor: tray_icon::Rect,
-    hwnd: HWND,
-    bounds: Option<(i32, i32, i32, i32)>,
+    bounds: Option<Bounds>,
     had_focus: bool,
     animate: bool,
     /// Whether the details page is shown or slides in, rather than the list.
@@ -93,20 +90,8 @@ impl<'a> Popup<'a> {
     fn new(cc: &eframe::CreationContext, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
         cc.egui_ctx.set_fonts(fonts());
         cc.egui_ctx.send_viewport_cmd(ViewportCommand::Focus);
-        let hwnd = match cc.window_handle().map(|handle| handle.as_raw()) {
-            Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get() as HWND,
-            _ => null_mut(),
-        };
-        // Windows 11 gives frameless windows square corners unless asked otherwise.
-        unsafe {
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-                (&DWMWCP_ROUND as *const i32).cast(),
-                4,
-            )
-        };
-        let animate = animations_enabled();
+        platform::popup::round_corners(cc);
+        let animate = platform::popup::animations_enabled();
         cc.egui_ctx.all_styles_mut(|style| {
             // Clicking a card opens its details, so its texts shouldn't take the click to select themselves.
             style.interaction.selectable_labels = false;
@@ -119,7 +104,6 @@ impl<'a> Popup<'a> {
         Self {
             shared,
             anchor,
-            hwnd,
             bounds: None,
             had_focus: false,
             animate,
@@ -129,41 +113,32 @@ impl<'a> Popup<'a> {
 
     /// Centers the popup on the tray icon, kept within the screen's work area. As the taskbar lies outside of the
     /// work area, this puts the popup right next to the icon, whichever screen edge the taskbar is on.
-    fn place(&mut self, size: Vec2, pixels_per_point: f32) {
-        let icon = POINT {
-            x: (self.anchor.position.x + f64::from(self.anchor.size.width) / 2.0) as i32,
-            y: (self.anchor.position.y + f64::from(self.anchor.size.height) / 2.0) as i32,
-        };
-        let mut monitor = MONITORINFO {
-            cbSize: size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-        unsafe { GetMonitorInfoW(MonitorFromPoint(icon, MONITOR_DEFAULTTONEAREST), &mut monitor) };
-        let area = monitor.rcWork;
+    fn place(&mut self, ctx: &egui::Context, size: Vec2) {
+        let pixels_per_point = ctx.pixels_per_point();
+        let icon_x = (self.anchor.position.x + f64::from(self.anchor.size.width) / 2.0) as i32;
+        let icon_y = (self.anchor.position.y + f64::from(self.anchor.size.height) / 2.0) as i32;
+        let area = platform::popup::work_area(icon_x, icon_y);
         let margin = (SCREEN_MARGIN * pixels_per_point) as i32;
         let (width, height) = (
             (size.x * pixels_per_point).round() as i32,
             (size.y * pixels_per_point).round() as i32,
         );
-        let x = (icon.x - width / 2)
-            .min(area.right - width - margin)
-            .max(area.left + margin);
-        let y = (icon.y - height / 2)
-            .min(area.bottom - height - margin)
-            .max(area.top + margin);
-        if self.bounds != Some((x, y, width, height)) {
-            self.bounds = Some((x, y, width, height));
-            unsafe {
-                SetWindowPos(
-                    self.hwnd,
-                    null_mut(),
-                    x,
-                    y,
-                    width,
-                    height,
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                )
-            };
+        let bounds = Bounds {
+            x: (icon_x - width / 2)
+                .min(area.x + area.width - width - margin)
+                .max(area.x + margin),
+            y: (icon_y - height / 2)
+                .min(area.y + area.height - height - margin)
+                .max(area.y + margin),
+            width,
+            height,
+        };
+        if self.bounds != Some(bounds) {
+            self.bounds = Some(bounds);
+            // egui takes points, which it turns back into these pixels.
+            let points = |pixels: i32| pixels as f32 / pixels_per_point;
+            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(pos2(points(bounds.x), points(bounds.y))));
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(points(width), points(height))));
         }
     }
 }
@@ -232,7 +207,7 @@ impl eframe::App for Popup<'_> {
                 Action::Back => self.details = false,
             }
         }
-        self.place(content.response.rect.size(), ctx.pixels_per_point());
+        self.place(&ctx, content.response.rect.size());
         // Keeps "Updated … ago" current.
         ctx.request_repaint_after(Duration::from_secs(60));
     }
@@ -769,37 +744,26 @@ fn icon(glyph: &str, size: f32) -> RichText {
     RichText::new(glyph).family(icons()).size(size)
 }
 
-/// Uses the Windows UI fonts, falling back to egui's bundled fonts where they are missing.
+/// Uses the system's UI fonts, falling back to egui's bundled fonts where they are missing.
 fn fonts() -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let fallbacks = fonts.families[&FontFamily::Proportional].clone();
     fonts.families.insert(semibold(), fallbacks.clone());
     fonts.families.insert(icons(), fallbacks);
 
-    let dir = std::path::PathBuf::from(std::env::var_os("WINDIR").unwrap_or_default()).join("Fonts");
-    // Windows 10 lacks Segoe Fluent Icons but has its predecessor with the same glyphs.
     let sources = [
-        (&["segoeui.ttf"][..], FontFamily::Proportional),
-        (&["seguisb.ttf"], semibold()),
-        (&["SegoeIcons.ttf", "segmdl2.ttf"], icons()),
+        (Font::Text, FontFamily::Proportional),
+        (Font::Semibold, semibold()),
+        (Font::Icons, icons()),
     ];
-    for (files, family) in sources {
-        if let Some((file, data)) = files
-            .iter()
-            .find_map(|file| Some((*file, std::fs::read(dir.join(file)).ok()?)))
-        {
+    for (font, family) in sources {
+        if let Some(data) = platform::popup::font(font) {
+            let name = family.to_string();
             fonts
                 .font_data
-                .insert(file.into(), Arc::new(FontData::from_owned(data)));
-            fonts.families.entry(family).or_default().insert(0, file.into());
+                .insert(name.clone(), Arc::new(FontData::from_owned(data)));
+            fonts.families.entry(family).or_default().insert(0, name);
         }
     }
     fonts
-}
-
-/// Whether the "Animation effects" setting of Windows is on.
-fn animations_enabled() -> bool {
-    let mut enabled = 1i32;
-    unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&mut enabled as *mut i32).cast(), 0) };
-    enabled != 0
 }
