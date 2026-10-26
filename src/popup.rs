@@ -434,12 +434,12 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
 /// A ring filled clockwise from the top up to `percent` around the percentage, with a moving highlight while
 /// `charging`. Returns where it was placed.
 fn ring(ui: &mut egui::Ui, palette: &Palette, percent: u8, color: Color32, charging: bool) -> Rect {
-    const WIDTH: f32 = 8.0;
+    const THICKNESS: f32 = 8.0;
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(88.0), Sense::hover());
     let center = rect.center();
-    let radius = (rect.width() - WIDTH) / 2.0;
+    let radius = (rect.width() - THICKNESS) / 2.0;
     let painter = ui.painter();
-    painter.circle_stroke(center, radius, Stroke::new(WIDTH, palette.track));
+    painter.circle_stroke(center, radius, Stroke::new(THICKNESS, palette.track));
 
     if percent > 0 {
         let sweep = TAU * f32::from(percent.min(100)) / 100.0;
@@ -451,18 +451,18 @@ fn ring(ui: &mut egui::Ui, palette: &Palette, percent: u8, color: Color32, charg
             // The highlight sweeps along the arc like the one on the bars.
             let half = 24.0 / radius;
             let head = sweep_phase(ui) * (sweep + 2.0 * half) - half;
-            PathStroke::new_uv(WIDTH, move |_, pos| {
+            PathStroke::new_uv(THICKNESS, move |_, pos| {
                 let angle = ((pos - center).angle() + FRAC_PI_2).rem_euclid(TAU);
                 let light = (1.0 - (angle - head).abs() / half).max(0.0);
                 color.lerp_to_gamma(Color32::WHITE, light * 0.47)
             })
         } else {
-            PathStroke::new(WIDTH, color)
+            PathStroke::new(THICKNESS, color)
         };
         painter.line(arc, stroke);
         // Rounds off the ends of the arc.
         for angle in [0.0, sweep] {
-            painter.circle_filled(point(angle), WIDTH / 2.0, color);
+            painter.circle_filled(point(angle), THICKNESS / 2.0, color);
         }
     }
 
@@ -519,13 +519,13 @@ fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
     ui.painter().rect_filled(fill, 4.0, color);
 
     ui.spacing_mut().item_spacing.y = 6.0;
-    legend(ui, palette, "Full charge", watt_hours(pack.full), |ui, swatch| {
+    legend(ui, palette, "Full charge", &watt_hours(pack.full), |ui, swatch| {
         ui.painter()
             .circle_filled(swatch.center(), swatch.height() / 2.0, color);
     });
     let lost = pack.design.saturating_sub(pack.full);
     if lost > 0 {
-        legend(ui, palette, "Lost to wear", watt_hours(lost), |ui, swatch| {
+        legend(ui, palette, "Lost to wear", &watt_hours(lost), |ui, swatch| {
             hatch(ui, palette, swatch);
         });
     }
@@ -533,16 +533,17 @@ fn health(ui: &mut egui::Ui, palette: &Palette, pack: &Pack) {
 
 /// A capsule of diagonal stripes on the track color, which marks capacity that is lost.
 fn hatch(ui: &egui::Ui, palette: &Palette, rect: Rect) {
+    const SAMPLES: usize = 16;
     let radius = rect.height() / 2.0;
     ui.painter().rect_filled(rect, radius, palette.track);
     let stroke = Stroke::new(1.5, palette.weak.gamma_multiply(0.6));
-    let core = rect.shrink2(Vec2::new(radius, radius));
+    let core = rect.shrink(radius);
     let inside = |point: Pos2| point.distance(core.clamp(point)) <= radius;
     let mut x = rect.left() - rect.height();
     while x < rect.right() {
         // Each stripe is cut to the samples along it that lie within the rounded ends.
-        let along = |i: usize| pos2(x, rect.bottom()) + rect.height() * Vec2::new(1.0, -1.0) * i as f32 / 16.0;
-        let points: Vec<Pos2> = (0..=16).map(along).filter(|&point| inside(point)).collect();
+        let along = |i| pos2(x, rect.bottom()) + rect.height() * Vec2::new(1.0, -1.0) * i as f32 / SAMPLES as f32;
+        let points: Vec<Pos2> = (0..=SAMPLES).map(along).filter(|&point| inside(point)).collect();
         if let [first, .., last] = points[..] {
             ui.painter().line_segment([first, last], stroke);
         }
@@ -551,7 +552,7 @@ fn hatch(ui: &egui::Ui, palette: &Palette, rect: Rect) {
 }
 
 /// A line of a legend: a swatch painted by `swatch` and a label on the left, the value on the right.
-fn legend(ui: &mut egui::Ui, palette: &Palette, label: &str, value: String, swatch: impl FnOnce(&egui::Ui, Rect)) {
+fn legend(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str, swatch: impl FnOnce(&egui::Ui, Rect)) {
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
         swatch(ui, rect);
