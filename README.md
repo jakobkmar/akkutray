@@ -1,7 +1,7 @@
 # akkutray
 
 See the battery level of your laptop, mouse and keyboard, and Bluetooth headphones at a glance, from
-the command line or from a small tray icon on Windows.
+the command line or from a small tray icon on Windows and Linux.
 
 <p align="center">
   <picture>
@@ -17,7 +17,7 @@ the command line or from a small tray icon on Windows.
 
 ## Quick start
 
-You need Windows and the [Rust toolchain](https://rustup.rs/).
+You need Windows or Linux and the [Rust toolchain](https://rustup.rs/). On Linux, see the [Linux notes](docs/troubleshooting.md#linux) too.
 
 ```powershell
 cargo install --path .   # build and install

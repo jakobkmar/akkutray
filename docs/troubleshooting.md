@@ -31,3 +31,12 @@ under *Settings → Personalization → Taskbar → Other system tray icons*.
 
 The tray is still running, and Windows can't replace a running program. Quit it (right-click the icon → **Quit**)
 and run the install again.
+
+## Linux
+
+**Logitech devices are missing.** akkutray needs read and write access to their `/dev/hidraw*` nodes, which only root
+has by default. The udev rules of [Solaar](https://github.com/pwr-Solaar/Solaar), which most distributions package,
+grant it to the logged-in user.
+
+**The tray icon doesn't show up.** The panel has to show StatusNotifierItem icons. KDE Plasma, COSMIC and most other
+panels do, GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension.

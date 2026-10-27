@@ -2,6 +2,7 @@
 //! animation setting.
 
 use crate::popup::{Bounds, Font};
+use eframe::egui;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::path::PathBuf;
 use windows_sys::Win32::Foundation::{HWND, POINT};
@@ -42,19 +43,19 @@ pub fn round_corners(window: &impl HasWindowHandle) {
 }
 
 /// The work area of the screen nearest to a point, which leaves out the taskbar.
-pub fn work_area(x: i32, y: i32) -> Bounds {
+pub fn work_area(x: i32, y: i32) -> Option<Bounds> {
     let mut monitor = MONITORINFO {
         cbSize: size_of::<MONITORINFO>() as u32,
         ..Default::default()
     };
     unsafe { GetMonitorInfoW(MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST), &mut monitor) };
     let area = monitor.rcWork;
-    Bounds {
+    Some(Bounds {
         x: area.left,
         y: area.top,
         width: area.right - area.left,
         height: area.bottom - area.top,
-    }
+    })
 }
 
 /// Whether the "Animation effects" setting of Windows is on.
@@ -74,4 +75,22 @@ pub fn font(font: Font) -> Option<Vec<u8>> {
     };
     let dir = PathBuf::from(std::env::var_os("WINDIR")?).join("Fonts");
     files.iter().find_map(|file| std::fs::read(dir.join(file)).ok())
+}
+
+/// A popup docked to the taskbar by the system, which Windows doesn't offer. The popup places itself instead.
+pub enum Dock {}
+
+impl Dock {
+    pub fn new() -> Option<Self> {
+        None
+    }
+
+    pub fn run(
+        self,
+        _ctx: &egui::Context,
+        _ui: impl FnMut(&mut egui::Ui),
+        _background: fn(&egui::Visuals) -> [f32; 4],
+    ) {
+        match self {}
+    }
 }
