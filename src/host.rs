@@ -38,6 +38,7 @@ pub fn battery() -> Option<Battery> {
         rechargeable: true,
         remaining,
         pack,
+        supply: platform::host::supply(),
         reported: None,
         connected: true,
     })
