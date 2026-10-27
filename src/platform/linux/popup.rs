@@ -117,9 +117,11 @@ pub fn font(font: Font) -> Option<Vec<u8>> {
 /// The popup as a layer surface, which Wayland desktops other than GNOME offer for panels and their popups. The
 /// compositor keeps it clear of the panel.
 pub struct Dock {
+    // EGL cleans up through the Wayland connection, so it has to go before the event loop and the state, which hold
+    // the connection.
+    gl: Gl,
     event_loop: EventLoop<'static, State>,
     state: State,
-    gl: Gl,
 }
 
 impl Dock {
