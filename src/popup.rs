@@ -102,6 +102,9 @@ impl<'a> Popup<'a> {
     fn new(ctx: &egui::Context, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
         ctx.set_fonts(fonts());
         ctx.send_viewport_cmd(ViewportCommand::Focus);
+        if let Some(theme) = platform::popup::theme() {
+            ctx.set_theme(theme);
+        }
         let animate = platform::popup::animations_enabled();
         ctx.all_styles_mut(|style| {
             // Clicking a card opens its details, so its texts shouldn't take the click to select themselves.

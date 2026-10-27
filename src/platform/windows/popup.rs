@@ -65,6 +65,11 @@ pub fn animations_enabled() -> bool {
     enabled != 0
 }
 
+/// The light or dark mode, which winit already reads from Windows.
+pub fn theme() -> Option<egui::Theme> {
+    None
+}
+
 /// Reads a font of the Windows UI.
 pub fn font(font: Font) -> Option<Vec<u8>> {
     let files: &[&str] = match font {
