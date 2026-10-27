@@ -1,8 +1,9 @@
-//! The computer's battery through the power API and the battery drivers, and its model from the firmware.
+//! The computer's battery through the power API and the battery drivers, its power supply through WinRT, and its model
+//! from the firmware.
 
-use crate::battery::{Pack, Power};
+use crate::battery::{Pack, Power, Supply};
 use crate::host::Status;
-use std::ffi::OsString;
+use std::ffi::{OsString, c_void};
 use std::fs::File;
 use std::os::windows::ffi::OsStringExt;
 use std::os::windows::io::AsRawHandle;
@@ -11,6 +12,7 @@ use std::time::Duration;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CR_SUCCESS,
 };
+use windows_sys::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
 use windows_sys::Win32::System::IO::DeviceIoControl;
 use windows_sys::Win32::System::Power::{
     BATTERY_CAPACITY_RELATIVE, BATTERY_INFORMATION, BATTERY_QUERY_INFORMATION, BATTERY_STATUS,
@@ -19,8 +21,34 @@ use windows_sys::Win32::System::Power::{
     SYSTEM_POWER_STATUS,
 };
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
-use windows_sys::core::PCWSTR;
+use windows_sys::core::{GUID, HRESULT, HSTRING, PCWSTR};
 use windows_sys::w;
+
+// windows-sys has no WinRT functions, so these come straight from the system.
+#[link(name = "combase", kind = "raw-dylib")]
+unsafe extern "system" {
+    fn RoGetActivationFactory(class: HSTRING, iid: *const GUID, factory: *mut *mut c_void) -> HRESULT;
+    fn WindowsCreateString(text: PCWSTR, len: u32, string: *mut HSTRING) -> HRESULT;
+    fn WindowsDeleteString(string: HSTRING) -> HRESULT;
+}
+
+/// Id of `Windows.System.Power.IPowerManagerStatics`, hard-coded as only the WinRT metadata holds it.
+const POWER_MANAGER_STATICS: GUID = GUID::from_u128(0x1394825d_62ce_4364_98d5_aa28c7fbd15b);
+
+/// The methods of `IPowerManagerStatics` up to the one that is called, in the order of its metadata.
+#[repr(C)]
+struct PowerManagerStatics {
+    /// `QueryInterface` and `AddRef`.
+    _unused: [usize; 2],
+    release: unsafe extern "system" fn(this: *mut c_void) -> u32,
+    /// The rest of `IInspectable`, and the energy saver and battery status with their events.
+    _skipped: [usize; 9],
+    power_supply_status: unsafe extern "system" fn(this: *mut c_void, status: *mut i32) -> HRESULT,
+}
+
+/// `PowerSupplyStatus` values.
+const INADEQUATE: i32 = 1;
+const ADEQUATE: i32 = 2;
 
 /// `BatteryFlag` bit of computers without a battery.
 const NO_BATTERY: u8 = 0x80;
@@ -50,6 +78,37 @@ pub fn status() -> Option<Status> {
         power,
         remaining: (status.BatteryLifeTime != UNKNOWN_TIME).then(|| Duration::from_secs(status.BatteryLifeTime.into())),
     })
+}
+
+/// Whether the plugged in power supply is strong enough, from the `PowerManager` of WinRT.
+pub fn supply() -> Option<Supply> {
+    let class: Vec<u16> = "Windows.System.Power.PowerManager".encode_utf16().collect();
+    let mut name = null_mut();
+    if unsafe { WindowsCreateString(class.as_ptr(), class.len() as u32, &mut name) } < 0 {
+        return None;
+    }
+    // WinRT needs COM on this thread. A thread that already uses COM in another mode works as well.
+    let com = unsafe { CoInitializeEx(null(), COINIT_MULTITHREADED as u32) } >= 0;
+    let mut factory = null_mut();
+    let mut status = 0;
+    unsafe {
+        if RoGetActivationFactory(name, &POWER_MANAGER_STATICS, &mut factory) >= 0 {
+            let statics = &**factory.cast::<*const PowerManagerStatics>();
+            if (statics.power_supply_status)(factory, &mut status) < 0 {
+                status = 0;
+            }
+            (statics.release)(factory);
+        }
+        if com {
+            CoUninitialize();
+        }
+        WindowsDeleteString(name);
+    }
+    match status {
+        ADEQUATE => Some(Supply::Adequate),
+        INADEQUATE => Some(Supply::Inadequate),
+        _ => None,
+    }
 }
 
 pub fn model() -> Option<String> {

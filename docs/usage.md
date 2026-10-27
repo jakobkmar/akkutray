@@ -66,7 +66,7 @@ per device until the tray restarts.
 | Left click | A small window opens at the icon, showing each device with its level and power state. Click elsewhere or press <kbd>Esc</kbd> to close it. |
 | Right click | A menu lists the devices and offers **Refresh** and **Quit**. |
 
-Click this computer in the window to see its battery health. Bluetooth devices disconnected within the last day are
+Click this computer in the window to see its battery health and whether its charger is strong enough. Bluetooth devices disconnected within the last day are
 listed muted with their last level.
 
 ### When it updates

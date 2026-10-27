@@ -46,6 +46,7 @@ pub fn scan() -> Vec<Battery> {
             rechargeable: true,
             remaining: None,
             pack: None,
+            supply: None,
             reported: device.reported,
             connected: device.connected,
         })

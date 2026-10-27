@@ -111,6 +111,7 @@ impl Channel {
             rechargeable,
             remaining: None,
             pack: None,
+            supply: None,
             reported: None,
             connected: true,
         })

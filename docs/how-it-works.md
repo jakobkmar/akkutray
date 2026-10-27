@@ -11,7 +11,8 @@ names from `data/names.txt`:
 
 The battery level, charging state and time estimate come from the Windows `GetSystemPowerStatus` API. The capacity,
 charge cycles and power flow come from the battery driver through `IOCTL_BATTERY_QUERY_INFORMATION` and
-`IOCTL_BATTERY_QUERY_STATUS`. The model and manufacturer come from the SMBIOS system information, which Windows mirrors in the registry under
+`IOCTL_BATTERY_QUERY_STATUS`. Whether the plugged in charger is strong enough comes from the `PowerManager` of
+WinRT. The model and manufacturer come from the SMBIOS system information, which Windows mirrors in the registry under
 `HKLM\HARDWARE\DESCRIPTION\System\BIOS`.
 
 ## Logitech devices

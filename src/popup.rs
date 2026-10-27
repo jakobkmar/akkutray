@@ -1,4 +1,4 @@
-use crate::battery::{Battery, Kind, Link, Pack, Power};
+use crate::battery::{Battery, Kind, Link, Pack, Power, Supply};
 use crate::platform;
 use crate::platform::popup::glyph::{
     BACK, BATTERY, BLUETOOTH, CHARGING, CHECK, CHEVRON_RIGHT, HEADSET, KEYBOARD, LAPTOP, MOUSE, REFRESH, USB, WARNING,
@@ -408,6 +408,9 @@ fn details_page(ui: &mut egui::Ui, palette: &Palette, battery: &Battery, animate
                 status_row(ui, palette, battery, color);
                 let stored = format!("{} of {}", watt_hours(pack.now), watt_hours(pack.full));
                 ui.label(RichText::new(stored).size(12.0).color(palette.weak));
+                if let Some(supply) = battery.supply {
+                    ui.label(charger(supply, palette.weak));
+                }
             });
         });
     });
@@ -655,6 +658,23 @@ fn source(battery: &Battery, color: Color32) -> LayoutJob {
     let gap = if battery.manufacturer.is_empty() { 0.0 } else { 10.0 };
     job.append(link, gap, glyph);
     job.append(&battery.connection, 4.0, text);
+    job
+}
+
+/// Whether the plugged in charger is strong enough behind a glyph, in amber if it isn't.
+fn charger(supply: Supply, color: Color32) -> LayoutJob {
+    let [r, g, b] = level_color(MEDIUM_PERCENT);
+    let (glyph, text, color) = match supply {
+        Supply::Adequate => (CHARGING, "Charger is strong enough", color),
+        Supply::Inadequate => (WARNING, "Charger is too weak", Color32::from_rgb(r, g, b)),
+    };
+    let mut job = LayoutJob::default();
+    let format = TextFormat {
+        valign: Align::Center,
+        ..TextFormat::simple(FontId::new(12.0, icons()), color)
+    };
+    job.append(glyph, 0.0, format);
+    job.append(text, 4.0, TextFormat::simple(FontId::proportional(12.0), color));
     job
 }
 

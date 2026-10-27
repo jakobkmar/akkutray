@@ -35,6 +35,14 @@ pub enum Power {
     Unknown,
 }
 
+/// Whether a plugged in power supply gives the computer enough power, as the system judges it.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Supply {
+    Adequate,
+    /// Too weak for the computer, e.g. a small USB charger.
+    Inadequate,
+}
+
 /// Capacity and wear of a computer's battery, summed up over its batteries if it has several.
 #[derive(Clone, Copy)]
 pub struct Pack {
@@ -62,6 +70,8 @@ pub struct Battery {
     /// Estimated time until the battery is empty, or full while charging.
     pub remaining: Option<Duration>,
     pub pack: Option<Pack>,
+    /// The computer's power supply while one is plugged in.
+    pub supply: Option<Supply>,
     /// When the device last reported its level, if it isn't read live.
     pub reported: Option<SystemTime>,
     /// False for paired devices that are out of reach, which show their last reported level.
