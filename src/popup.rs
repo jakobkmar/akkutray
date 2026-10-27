@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 const WIDTH: f32 = 340.0;
 /// Minimum gap between the popup and the edges of the screen's work area, in points.
-pub const SCREEN_MARGIN: f32 = 12.0;
+const SCREEN_MARGIN: f32 = 12.0;
 /// Level at or below which a battery counts as low, shared with the tray's warnings.
 pub const LOW_PERCENT: u8 = 20;
 const MEDIUM_PERCENT: u8 = 50;
@@ -54,12 +54,6 @@ pub fn level_color(percent: u8) -> [u8; 3] {
 
 /// Opens the popup next to the tray icon at `anchor` and blocks until it is closed.
 pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
-    if let Some(dock) = platform::popup::Dock::new() {
-        let ctx = egui::Context::default();
-        let mut popup = Popup::new(&ctx, shared, anchor);
-        dock.run(&ctx, |ui| popup.draw(ui), background);
-        return Ok(());
-    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("akkutray")
@@ -73,16 +67,16 @@ pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
     eframe::run_native(
         "akkutray",
         options,
-        Box::new(|cc| {
-            platform::popup::round_corners(cc);
-            Ok(Box::new(Popup::new(&cc.egui_ctx, shared, anchor)))
-        }),
+        Box::new(|cc| Ok(Box::new(Popup::new(cc, shared, anchor)))),
     )
 }
 
 struct Popup<'a> {
     shared: &'a Shared,
-    anchor: tray_icon::Rect,
+    /// Middle of the tray icon, in physical pixels.
+    icon: (i32, i32),
+    /// Work area of the screen with the tray icon, if the system tells it.
+    area: Option<Bounds>,
     bounds: Option<Bounds>,
     had_focus: bool,
     animate: bool,
@@ -99,25 +93,31 @@ enum Action {
 }
 
 impl<'a> Popup<'a> {
-    fn new(ctx: &egui::Context, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
-        ctx.set_fonts(fonts());
-        ctx.send_viewport_cmd(ViewportCommand::Focus);
+    fn new(cc: &eframe::CreationContext, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
+        cc.egui_ctx.set_fonts(fonts());
+        cc.egui_ctx.send_viewport_cmd(ViewportCommand::Focus);
+        platform::popup::round_corners(cc);
         if let Some(theme) = platform::popup::theme() {
-            ctx.set_theme(theme);
+            cc.egui_ctx.set_theme(theme);
         }
         let animate = platform::popup::animations_enabled();
-        ctx.all_styles_mut(|style| {
+        cc.egui_ctx.all_styles_mut(|style| {
             // Clicking a card opens its details, so its texts shouldn't take the click to select themselves.
             style.interaction.selectable_labels = false;
             if !animate {
                 style.animation_time = 0.0;
             }
         });
-        shared.lock().popup = Some(ctx.clone());
+        shared.lock().popup = Some(cc.egui_ctx.clone());
         shared.refresh();
+        let icon = (
+            (anchor.position.x + f64::from(anchor.size.width) / 2.0) as i32,
+            (anchor.position.y + f64::from(anchor.size.height) / 2.0) as i32,
+        );
         Self {
             shared,
-            anchor,
+            icon,
+            area: platform::popup::work_area(icon.0, icon.1),
             bounds: None,
             had_focus: false,
             animate,
@@ -125,37 +125,35 @@ impl<'a> Popup<'a> {
         }
     }
 
-    /// Centers the popup on the tray icon, kept within the screen's work area. As the taskbar lies outside of the
-    /// work area, this puts the popup right next to the icon, whichever screen edge the taskbar is on.
+    /// Centers the popup on the tray icon, kept within the screen's work area where the system tells it. As the
+    /// taskbar lies outside of the work area, this puts the popup right next to the icon, whichever screen edge the
+    /// taskbar is on.
     fn place(&mut self, ctx: &egui::Context, size: Vec2) {
         let pixels_per_point = ctx.pixels_per_point();
-        let icon_x = (self.anchor.position.x + f64::from(self.anchor.size.width) / 2.0) as i32;
-        let icon_y = (self.anchor.position.y + f64::from(self.anchor.size.height) / 2.0) as i32;
-        let area = platform::popup::work_area(icon_x, icon_y);
         let margin = (SCREEN_MARGIN * pixels_per_point) as i32;
         let (width, height) = (
             (size.x * pixels_per_point).round() as i32,
             (size.y * pixels_per_point).round() as i32,
         );
-        let (x, y) = area.map_or((0, 0), |area| {
-            (
-                (icon_x - width / 2)
-                    .min(area.x + area.width - width - margin)
-                    .max(area.x + margin),
-                (icon_y - height / 2)
-                    .min(area.y + area.height - height - margin)
-                    .max(area.y + margin),
-            )
-        });
-        let bounds = Bounds { x, y, width, height };
+        let (icon_x, icon_y) = self.icon;
+        let mut bounds = Bounds {
+            x: icon_x - width / 2,
+            y: icon_y - height / 2,
+            width,
+            height,
+        };
+        if let Some(area) = self.area {
+            bounds.x = bounds.x.min(area.x + area.width - width - margin).max(area.x + margin);
+            bounds.y = bounds
+                .y
+                .min(area.y + area.height - height - margin)
+                .max(area.y + margin);
+        }
         if self.bounds != Some(bounds) {
             self.bounds = Some(bounds);
             // egui takes points, which it turns back into these pixels.
             let points = |pixels: i32| pixels as f32 / pixels_per_point;
-            // Without a work area, the system places the popup.
-            if area.is_some() {
-                ctx.send_viewport_cmd(ViewportCommand::OuterPosition(pos2(points(x), points(y))));
-            }
+            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(pos2(points(bounds.x), points(bounds.y))));
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(points(width), points(height))));
         }
     }
@@ -163,16 +161,10 @@ impl<'a> Popup<'a> {
 
 impl eframe::App for Popup<'_> {
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        background(visuals)
+        Palette::new(visuals.dark_mode).background.to_normalized_gamma_f32()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.draw(ui);
-    }
-}
-
-impl Popup<'_> {
-    fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let focused = ctx.input(|input| input.viewport().focused);
         self.had_focus |= focused == Some(true);
@@ -235,10 +227,8 @@ impl Popup<'_> {
         // Keeps "Updated … ago" current.
         ctx.request_repaint_after(Duration::from_secs(60));
     }
-}
 
-impl Drop for Popup<'_> {
-    fn drop(&mut self) {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shared.lock().popup = None;
     }
 }
@@ -875,10 +865,6 @@ impl Palette {
             }
         }
     }
-}
-
-fn background(visuals: &egui::Visuals) -> [f32; 4] {
-    Palette::new(visuals.dark_mode).background.to_normalized_gamma_f32()
 }
 
 fn semibold() -> FontFamily {

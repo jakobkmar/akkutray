@@ -1,6 +1,6 @@
 //! The computer's battery and model from sysfs.
 
-use crate::battery::{Pack, Power};
+use crate::battery::{Pack, Power, Supply};
 use crate::host::Status;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,15 +11,21 @@ const DMI: &str = "/sys/class/dmi/id";
 
 pub fn status() -> Option<Status> {
     let batteries = batteries();
-    let levels: Vec<u64> = batteries
+    // Each level counts by the size of its battery, in whichever unit its driver reports.
+    let (sum, total) = batteries
         .iter()
-        .filter_map(|battery| number(battery, "capacity"))
-        .collect();
-    if levels.is_empty() {
+        .filter_map(|battery| {
+            let full = number(battery, "energy_full").or_else(|| number(battery, "charge_full"));
+            Some((
+                number(battery, "capacity")?,
+                full.filter(|&full| full != 0).unwrap_or(1),
+            ))
+        })
+        .fold((0, 0), |(sum, total), (level, size)| (sum + level * size, total + size));
+    if total == 0 {
         return None;
     }
-    // ponytail: averages the levels, which is only exact for batteries of the same size
-    let percent = (levels.iter().sum::<u64>() / levels.len() as u64).min(100);
+    let percent = (sum / total).min(100);
     let states: Vec<String> = batteries.iter().filter_map(|battery| text(battery, "status")).collect();
     // One charging battery makes the computer charge, while another may wait, e.g. in a laptop with two.
     let power = [
@@ -37,6 +43,25 @@ pub fn status() -> Option<Status> {
         power,
         // Linux keeps no estimate of its own.
         remaining: None,
+    })
+}
+
+/// Whether the plugged in power supply is strong enough. Linux doesn't judge it, but one that is too weak leaves the
+/// battery discharging.
+pub fn supply() -> Option<Supply> {
+    if !supplies(&["Mains", "USB"])
+        .iter()
+        .any(|supply| number(supply, "online") == Some(1))
+    {
+        return None;
+    }
+    let discharging = batteries()
+        .iter()
+        .any(|battery| text(battery, "status").is_some_and(|status| status == "Discharging"));
+    Some(if discharging {
+        Supply::Inadequate
+    } else {
+        Supply::Adequate
     })
 }
 
@@ -84,17 +109,23 @@ fn pack(battery: &Path) -> Option<Pack> {
     })
 }
 
-/// The batteries of the computer, leaving out those of devices such as mice, which Linux lists as well.
 fn batteries() -> Vec<PathBuf> {
+    let mut batteries = supplies(&["Battery"]);
+    batteries.retain(|battery| number(battery, "present") != Some(0));
+    batteries
+}
+
+/// The power supplies of the computer of the given types, leaving out those of devices such as mice, which Linux
+/// lists as well.
+fn supplies(types: &[&str]) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(POWER_SUPPLY) else {
         return Vec::new();
     };
     entries
         .filter_map(|entry| Some(entry.ok()?.path()))
         .filter(|path| {
-            text(path, "type").is_some_and(|kind| kind == "Battery")
+            text(path, "type").is_some_and(|kind| types.contains(&kind.as_str()))
                 && text(path, "scope").is_none_or(|scope| scope == "System")
-                && number(path, "present") != Some(0)
         })
         .collect()
 }

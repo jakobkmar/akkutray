@@ -24,4 +24,4 @@ you can now run `akkutray` from any terminal.
 
 1. Quit the tray if it is running.
 2. Run `cargo uninstall akkutray`.
-3. If you set up [Start with Windows](autostart.md), delete the shortcut from the startup folder.
+3. If you set up [Start at login](autostart.md), undo it.

@@ -38,17 +38,17 @@ last level is less than a day old. The manufacturer is looked up by vendor id in
 On Linux, the same sources come from elsewhere:
 
 - **This computer**: the battery from `/sys/class/power_supply`, the model and manufacturer from `/sys/class/dmi/id`.
-  Linux keeps no time estimate, so akkutray computes it from the power flow.
+  Linux keeps no time estimate, so akkutray computes it from the power flow. Nor does it judge the charger, so akkutray
+  calls a charger too weak while the battery still discharges on it.
 - **Logitech devices**: the same HID++ requests through hidraw, which lists the HID++ interface once for each report
   type, with the same device node.
 - **Bluetooth devices**: the `org.bluez.Battery1` interface of BlueZ, over D-Bus. BlueZ drops the level when a device
   disconnects, so only connected devices are listed.
 
 The tray icon is a StatusNotifierItem, and low battery warnings go to `org.freedesktop.Notifications`, both over
-D-Bus. As Wayland doesn't let windows place themselves, the popup is a layer shell surface, like the panels' own
-popups. Tray hosts don't tell where their icons are, so it hangs from the middle of the top edge, right below panels
-that reserve their space and a little lower where none does. Desktops without the layer shell, such as GNOME, place
-it themselves.
+D-Bus. Tray hosts tell where the icon was clicked, so on X11 the popup opens there, within the work area from
+`_NET_WORKAREA`. Wayland doesn't let windows place themselves, so there the desktop places it. As its size is fixed,
+tiling window managers such as sway and i3 float it.
 
 ## Code layout
 

@@ -40,3 +40,6 @@ grant it to the logged-in user.
 
 **The tray icon doesn't show up.** The panel has to show StatusNotifierItem icons. KDE Plasma, COSMIC and most other
 panels do, GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension.
+
+**The window doesn't open at the icon.** Wayland doesn't let programs place their windows, so the desktop decides
+where it opens.

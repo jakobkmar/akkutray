@@ -81,21 +81,3 @@ pub fn font(font: Font) -> Option<Vec<u8>> {
     let dir = PathBuf::from(std::env::var_os("WINDIR")?).join("Fonts");
     files.iter().find_map(|file| std::fs::read(dir.join(file)).ok())
 }
-
-/// A popup docked to the taskbar by the system, which Windows doesn't offer. The popup places itself instead.
-pub enum Dock {}
-
-impl Dock {
-    pub fn new() -> Option<Self> {
-        None
-    }
-
-    pub fn run(
-        self,
-        _ctx: &egui::Context,
-        _ui: impl FnMut(&mut egui::Ui),
-        _background: fn(&egui::Visuals) -> [f32; 4],
-    ) {
-        match self {}
-    }
-}

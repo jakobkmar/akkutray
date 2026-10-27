@@ -25,7 +25,7 @@ akkutray                 # print battery levels once to the terminal
 akkutray tray            # show a tray icon in the background
 ```
 
-To have the tray icon appear every time you log in, see [Start with Windows](docs/autostart.md).
+To have the tray icon appear every time you log in, see [Start at login](docs/autostart.md).
 
 ## Documentation
 
@@ -33,7 +33,7 @@ To have the tray icon appear every time you log in, see [Start with Windows](doc
 
 - [Installation](docs/installation.md): install, update and uninstall
 - [Usage](docs/usage.md): the command line and the tray icon
-- [Start with Windows](docs/autostart.md): start the tray at login
+- [Start at login](docs/autostart.md): start the tray at login
 
 **Reference**
 

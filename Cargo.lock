@@ -37,14 +37,12 @@ dependencies = [
  "crossbeam-channel",
  "eframe",
  "egui",
- "egui_glow",
  "embed-manifest",
- "glutin",
  "hidapi",
  "raw-window-handle",
- "smithay-client-toolkit",
  "tray-icon",
  "windows-sys 0.61.2",
+ "x11rb",
  "zbus",
 ]
 
