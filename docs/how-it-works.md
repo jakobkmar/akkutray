@@ -46,9 +46,11 @@ On Linux, the same sources come from elsewhere:
   disconnects, so only connected devices are listed.
 
 The tray icon is a StatusNotifierItem, and low battery warnings go to `org.freedesktop.Notifications`, both over
-D-Bus. Tray hosts tell where the icon was clicked, so on X11 the popup opens there, within the work area from
-`_NET_WORKAREA`. Wayland doesn't let windows place themselves, so there the desktop places it. As its size is fixed,
-tiling window managers such as sway and i3 float it.
+D-Bus. Wayland doesn't let windows place themselves, so there the popup is a layer shell surface, like the panels' own
+popups. It docks to the screen edge nearest to where the tray icon was clicked, or below the top panel where the tray
+host doesn't tell, as COSMIC's. On X11, the popup is a window at the click, within the work area from
+`_NET_WORKAREA`. As its size is fixed, tiling window managers such as i3 float it. GNOME, which lacks the layer shell,
+places it itself.
 
 ## Code layout
 

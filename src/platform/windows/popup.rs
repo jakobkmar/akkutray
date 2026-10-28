@@ -70,6 +70,19 @@ pub fn theme() -> Option<egui::Theme> {
     None
 }
 
+/// A popup docked to the taskbar by the system, which Windows doesn't offer. The popup places itself instead.
+pub enum Dock {}
+
+impl Dock {
+    pub fn new(_icon: (i32, i32)) -> Option<Self> {
+        None
+    }
+
+    pub fn run(self, _ctx: &egui::Context, _background: [f32; 4], _ui: impl FnMut(&mut egui::Ui)) {
+        match self {}
+    }
+}
+
 /// Reads a font of the Windows UI.
 pub fn font(font: Font) -> Option<Vec<u8>> {
     let files: &[&str] = match font {

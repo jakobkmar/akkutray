@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 const WIDTH: f32 = 340.0;
 /// Minimum gap between the popup and the edges of the screen's work area, in points.
-const SCREEN_MARGIN: f32 = 12.0;
+pub const SCREEN_MARGIN: f32 = 12.0;
 /// Level at or below which a battery counts as low, shared with the tray's warnings.
 pub const LOW_PERCENT: u8 = 20;
 const MEDIUM_PERCENT: u8 = 50;
@@ -54,6 +54,16 @@ pub fn level_color(percent: u8) -> [u8; 3] {
 
 /// Opens the popup next to the tray icon at `anchor` and blocks until it is closed.
 pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
+    let icon = (
+        (anchor.position.x + f64::from(anchor.size.width) / 2.0) as i32,
+        (anchor.position.y + f64::from(anchor.size.height) / 2.0) as i32,
+    );
+    if let Some(dock) = platform::popup::Dock::new(icon) {
+        let ctx = egui::Context::default();
+        let mut popup = Popup::new(&ctx, shared, icon);
+        dock.run(&ctx, background(&ctx.global_style().visuals), |ui| popup.draw(ui));
+        return Ok(());
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("akkutray")
@@ -67,7 +77,10 @@ pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
     eframe::run_native(
         "akkutray",
         options,
-        Box::new(|cc| Ok(Box::new(Popup::new(cc, shared, anchor)))),
+        Box::new(|cc| {
+            platform::popup::round_corners(cc);
+            Ok(Box::new(Popup::new(&cc.egui_ctx, shared, icon)))
+        }),
     )
 }
 
@@ -93,27 +106,23 @@ enum Action {
 }
 
 impl<'a> Popup<'a> {
-    fn new(cc: &eframe::CreationContext, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
-        cc.egui_ctx.set_fonts(fonts());
-        cc.egui_ctx.send_viewport_cmd(ViewportCommand::Focus);
-        platform::popup::round_corners(cc);
+    /// Sets up the popup for the tray icon whose middle is at `icon`, in physical pixels.
+    fn new(ctx: &egui::Context, shared: &'a Shared, icon: (i32, i32)) -> Self {
+        ctx.set_fonts(fonts());
+        ctx.send_viewport_cmd(ViewportCommand::Focus);
         if let Some(theme) = platform::popup::theme() {
-            cc.egui_ctx.set_theme(theme);
+            ctx.set_theme(theme);
         }
         let animate = platform::popup::animations_enabled();
-        cc.egui_ctx.all_styles_mut(|style| {
+        ctx.all_styles_mut(|style| {
             // Clicking a card opens its details, so its texts shouldn't take the click to select themselves.
             style.interaction.selectable_labels = false;
             if !animate {
                 style.animation_time = 0.0;
             }
         });
-        shared.lock().popup = Some(cc.egui_ctx.clone());
+        shared.lock().popup = Some(ctx.clone());
         shared.refresh();
-        let icon = (
-            (anchor.position.x + f64::from(anchor.size.width) / 2.0) as i32,
-            (anchor.position.y + f64::from(anchor.size.height) / 2.0) as i32,
-        );
         Self {
             shared,
             icon,
@@ -161,10 +170,16 @@ impl<'a> Popup<'a> {
 
 impl eframe::App for Popup<'_> {
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        Palette::new(visuals.dark_mode).background.to_normalized_gamma_f32()
+        background(visuals)
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.draw(ui);
+    }
+}
+
+impl Popup<'_> {
+    fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let focused = ctx.input(|input| input.viewport().focused);
         self.had_focus |= focused == Some(true);
@@ -227,8 +242,10 @@ impl eframe::App for Popup<'_> {
         // Keeps "Updated … ago" current.
         ctx.request_repaint_after(Duration::from_secs(60));
     }
+}
 
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+impl Drop for Popup<'_> {
+    fn drop(&mut self) {
         self.shared.lock().popup = None;
     }
 }
@@ -865,6 +882,10 @@ impl Palette {
             }
         }
     }
+}
+
+fn background(visuals: &egui::Visuals) -> [f32; 4] {
+    Palette::new(visuals.dark_mode).background.to_normalized_gamma_f32()
 }
 
 fn semibold() -> FontFamily {
