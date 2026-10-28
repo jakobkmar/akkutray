@@ -33,6 +33,23 @@ device's profile nodes. akkutray reads it with the Configuration Manager API, th
 and vendor id from the device node in the same device container. Switched-off devices are only listed while their
 last level is less than a day old. The manufacturer is looked up by vendor id in `data/vendors.txt`.
 
+## Linux
+
+On Linux, the same sources come from elsewhere:
+
+- **This computer**: the battery from `/sys/class/power_supply`, the model and manufacturer from `/sys/class/dmi/id`.
+  Linux keeps no time estimate, so akkutray computes it from the power flow. Nor does it judge the charger, so akkutray
+  calls a charger too weak while the battery still discharges on it.
+- **Logitech devices**: the same HID++ requests through hidraw, which lists the HID++ interface once for each report
+  type, with the same device node.
+- **Bluetooth devices**: the `org.bluez.Battery1` interface of BlueZ, over D-Bus. BlueZ drops the level when a device
+  disconnects, so only connected devices are listed.
+
+The tray icon is a StatusNotifierItem, and low battery warnings go to `org.freedesktop.Notifications`, both over
+D-Bus. Tray hosts tell where the icon was clicked, so on X11 the popup opens there, within the work area from
+`_NET_WORKAREA`. Wayland doesn't let windows place themselves, so there the desktop places it. As its size is fixed,
+tiling window managers such as sway and i3 float it.
+
 ## Code layout
 
 | File | Contents |
@@ -46,5 +63,6 @@ last level is less than a day old. The manufacturer is looked up by vendor id in
 | `src/popup.rs` | Window opened by a left click, built with [egui](https://github.com/emilk/egui) |
 | `src/platform/mod.rs` | Picks the code of the platform the program is built for |
 | `src/platform/windows/` | All calls to Windows, in one file for each of the modules above that needs them |
+| `src/platform/linux/` | The same for Linux |
 | `data/names.txt` | Display names for unclearly named devices, compiled into the program |
 | `data/vendors.txt` | Manufacturer names of Bluetooth devices by vendor id, compiled into the program |

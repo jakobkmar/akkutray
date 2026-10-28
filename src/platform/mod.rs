@@ -14,5 +14,10 @@ mod windows;
 #[cfg(windows)]
 pub use windows::*;
 
-#[cfg(not(windows))]
-compile_error!("akkutray only supports Windows so far");
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::*;
+
+#[cfg(not(any(windows, target_os = "linux")))]
+compile_error!("akkutray only supports Windows and Linux so far");

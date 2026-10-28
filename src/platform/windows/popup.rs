@@ -2,6 +2,7 @@
 //! animation setting.
 
 use crate::popup::{Bounds, Font};
+use eframe::egui;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::path::PathBuf;
 use windows_sys::Win32::Foundation::{HWND, POINT};
@@ -42,19 +43,19 @@ pub fn round_corners(window: &impl HasWindowHandle) {
 }
 
 /// The work area of the screen nearest to a point, which leaves out the taskbar.
-pub fn work_area(x: i32, y: i32) -> Bounds {
+pub fn work_area(x: i32, y: i32) -> Option<Bounds> {
     let mut monitor = MONITORINFO {
         cbSize: size_of::<MONITORINFO>() as u32,
         ..Default::default()
     };
     unsafe { GetMonitorInfoW(MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST), &mut monitor) };
     let area = monitor.rcWork;
-    Bounds {
+    Some(Bounds {
         x: area.left,
         y: area.top,
         width: area.right - area.left,
         height: area.bottom - area.top,
-    }
+    })
 }
 
 /// Whether the "Animation effects" setting of Windows is on.
@@ -62,6 +63,16 @@ pub fn animations_enabled() -> bool {
     let mut enabled = 1i32;
     unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&mut enabled as *mut i32).cast(), 0) };
     enabled != 0
+}
+
+/// Resizes the popup to `size`, in points.
+pub fn resize(ctx: &egui::Context, size: egui::Vec2) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+}
+
+/// The light or dark mode, which winit already reads from Windows.
+pub fn theme() -> Option<egui::Theme> {
+    None
 }
 
 /// Reads a font of the Windows UI.

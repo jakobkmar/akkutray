@@ -55,7 +55,7 @@ runs out first.
 | Red | 20% or below |
 | Empty outline | no device reachable |
 
-When a device drops from above 20% to 20% or below, Windows shows a **Low battery** notification. It comes once
+When a device drops from above 20% to 20% or below, the system shows a **Low battery** notification. It comes once
 per device until the tray restarts.
 
 ### Interacting with it
@@ -82,7 +82,7 @@ The battery levels are read again:
 Windows 11 puts new tray icons in the overflow area behind the `^` arrow. To keep the icon visible, drag it onto the
 taskbar, or turn it on under *Settings → Personalization → Taskbar → Other system tray icons*.
 
-To start the tray every time you log in, see [Start with Windows](autostart.md).
+To start the tray every time you log in, see [Start at login](autostart.md).
 
 ## Display names
 

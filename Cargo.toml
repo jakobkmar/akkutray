@@ -2,18 +2,28 @@
 name = "akkutray"
 version = "0.1.0"
 edition = "2024"
-description = "Battery levels of wireless devices as CLI and Windows tray icon"
+description = "Battery levels of wireless devices as CLI and tray icon on Windows and Linux"
 license = "MIT"
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
 hidapi = { version = "2.6", default-features = false }
 raw-window-handle = "0.6"
-tray-icon = "0.26"
+tray-icon = { version = "0.26", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.61", features = ["Wdk_Devices_Bluetooth", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Properties", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Console","Win32_System_IO", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+crossbeam-channel = "0.5"
+eframe = { version = "0.37", default-features = false, features = ["wayland", "x11"] }
+# Linux has no common icon font, so the popup takes its glyphs from egui's emoji fonts.
+egui = { version = "0.37", default-features = false, features = ["monochrome_emoji_fonts"] }
+hidapi = { version = "2.6", default-features = false, features = ["linux-native-basic-udev"] }
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
+x11rb = "0.13"
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
 
 [profile.release]
 lto = true

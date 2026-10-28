@@ -6,7 +6,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tray_icon::{Icon, MouseButton, MouseButtonState, Rect, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
@@ -18,7 +18,7 @@ struct Warnings {
     warned: HashSet<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct State {
     pub batteries: Vec<Battery>,
     pub updated: Option<Instant>,
@@ -98,6 +98,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                position,
                 rect,
                 ..
             } = event
@@ -108,7 +109,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             if popup_closed.is_some_and(|time| time.elapsed() < Duration::from_millis(300)) {
                 continue;
             }
-            popup::show(&shared, rect)?;
+            // Tray hosts on Linux tell only where the click was, not where the icon is.
+            let anchor = if rect.size.width == 0 {
+                Rect { position, ..rect }
+            } else {
+                rect
+            };
+            popup::show(&shared, anchor)?;
             popup_closed = Some(Instant::now());
             // Readings that arrived while the popup was open skipped this loop.
             update(&tray, &shared, &mut warnings)?;
