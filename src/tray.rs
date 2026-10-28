@@ -18,7 +18,7 @@ struct Warnings {
     warned: HashSet<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct State {
     pub batteries: Vec<Battery>,
     pub updated: Option<Instant>,

@@ -3,7 +3,7 @@ use crate::platform;
 use crate::platform::popup::glyph::{
     BACK, BATTERY, BLUETOOTH, CHARGING, CHECK, CHEVRON_RIGHT, HEADSET, KEYBOARD, LAPTOP, MOUSE, REFRESH, USB, WARNING,
 };
-use crate::tray::Shared;
+use crate::tray::{Shared, State};
 use eframe::egui::emath::easing;
 use eframe::egui::epaint::PathStroke;
 use eframe::egui::text::{LayoutJob, TextFormat};
@@ -55,10 +55,11 @@ pub fn level_color(percent: u8) -> [u8; 3] {
 
 /// Opens the popup next to the tray icon at `anchor` and blocks until it is closed.
 pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
+    let fonts = fonts();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("akkutray")
-            .with_inner_size([WIDTH, 200.0])
+            .with_inner_size(measure(shared, fonts.clone()))
             .with_decorations(false)
             .with_resizable(false)
             .with_taskbar(false)
@@ -68,8 +69,24 @@ pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
     eframe::run_native(
         "akkutray",
         options,
-        Box::new(|cc| Ok(Box::new(Popup::new(cc, shared, anchor)))),
+        Box::new(|cc| Ok(Box::new(Popup::new(cc, shared, anchor, fonts)))),
     )
+}
+
+/// The popup's size in points, laid out once before its window opens, so the window opens at it. Wayland desktops
+/// may keep a window at the size it first showed with for a while.
+fn measure(shared: &Shared, fonts: FontDefinitions) -> Vec2 {
+    let ctx = egui::Context::default();
+    ctx.set_fonts(fonts);
+    let state = shared.lock().clone();
+    let mut size = Vec2::ZERO;
+    // Nothing is painted, so the fonts' textures are dropped.
+    ctx.run_ui(egui::RawInput::default(), |ui| {
+        size = layout(ui, &state, false, 0.0, &mut Vec::new());
+    })
+    .textures_delta
+    .clear();
+    size
 }
 
 struct Popup<'a> {
@@ -94,8 +111,8 @@ enum Action {
 }
 
 impl<'a> Popup<'a> {
-    fn new(cc: &eframe::CreationContext, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
-        cc.egui_ctx.set_fonts(fonts());
+    fn new(cc: &eframe::CreationContext, shared: &'a Shared, anchor: tray_icon::Rect, fonts: FontDefinitions) -> Self {
+        cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.send_viewport_cmd(ViewportCommand::Focus);
         platform::popup::round_corners(cc);
         if let Some(theme) = platform::popup::theme() {
@@ -199,42 +216,13 @@ impl eframe::App for Popup<'_> {
             }
         }
 
-        let palette = Palette::new(ui.visuals().dark_mode);
-        let (batteries, updated, updating) = {
-            let state = self.shared.lock();
-            (state.batteries.clone(), state.updated, state.updating)
-        };
-        let animate = self.animate;
-        let with_details = batteries.iter().find(|battery| has_details(battery));
-        self.details &= with_details.is_some();
-        let time = if animate { SLIDE_TIME } else { 0.0 };
+        let state = self.shared.lock().clone();
+        self.details &= state.batteries.iter().any(has_details);
+        let time = if self.animate { SLIDE_TIME } else { 0.0 };
         let slide_id = ui.make_persistent_id("details");
         let slide = ctx.animate_bool_with_time_and_easing(slide_id, self.details, time, easing::cubic_out);
-
         let mut actions = Vec::new();
-        let width = WIDTH - 32.0;
-        let content = Frame::new().inner_margin(16).show(ui, |ui| {
-            ui.set_width(width);
-            ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
-            let origin = ui.cursor().min;
-            // Pages slide within the content area, so they mustn't show in the margins.
-            let clip = Rect::from_x_y_ranges(origin.x..=origin.x + width, ui.clip_rect().y_range());
-            // The list leaves to the left while the details page comes in from the right.
-            let list_at = pos2(origin.x - slide * width, origin.y);
-            let mut height = page(ui, "list", list_at, clip, slide < 1.0, |ui| {
-                list(ui, &palette, &batteries, updated, updating, animate, &mut actions);
-            });
-            // The popup takes the height of its taller page, so it doesn't resize while a page slides in. While the
-            // details page isn't shown, it is only laid out to measure it.
-            if let Some(battery) = with_details {
-                let at = pos2(origin.x + (1.0 - slide) * width, origin.y);
-                let details_height = page(ui, "details", at, clip, slide > 0.0, |ui| {
-                    details_page(ui, &palette, battery, animate, &mut actions);
-                });
-                height = height.max(details_height);
-            }
-            ui.allocate_space(Vec2::new(width, height));
-        });
+        let size = layout(ui, &state, self.animate, slide, &mut actions);
         for action in actions {
             match action {
                 Action::Refresh => self.shared.refresh(),
@@ -242,7 +230,7 @@ impl eframe::App for Popup<'_> {
                 Action::Back => self.details = false,
             }
         }
-        self.place(&ctx, content.response.rect.size());
+        self.place(&ctx, size);
         // Keeps "Updated … ago" current.
         ctx.request_repaint_after(Duration::from_secs(60));
     }
@@ -250,6 +238,43 @@ impl eframe::App for Popup<'_> {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shared.lock().popup = None;
     }
+}
+
+/// Lays out the list and, slid in by `slide` from 0 to 1, the details page, and returns the popup's size in points.
+fn layout(ui: &mut egui::Ui, state: &State, animate: bool, slide: f32, actions: &mut Vec<Action>) -> Vec2 {
+    let palette = Palette::new(ui.visuals().dark_mode);
+    let width = WIDTH - 32.0;
+    let content = Frame::new().inner_margin(16).show(ui, |ui| {
+        ui.set_width(width);
+        ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
+        let origin = ui.cursor().min;
+        // Pages slide within the content area, so they mustn't show in the margins.
+        let clip = Rect::from_x_y_ranges(origin.x..=origin.x + width, ui.clip_rect().y_range());
+        // The list leaves to the left while the details page comes in from the right.
+        let list_at = pos2(origin.x - slide * width, origin.y);
+        let mut height = page(ui, "list", list_at, clip, slide < 1.0, |ui| {
+            list(
+                ui,
+                &palette,
+                &state.batteries,
+                state.updated,
+                state.updating,
+                animate,
+                actions,
+            );
+        });
+        // The popup takes the height of its taller page, so it doesn't resize while a page slides in. While the
+        // details page isn't shown, it is only laid out to measure it.
+        if let Some(battery) = state.batteries.iter().find(|battery| has_details(battery)) {
+            let at = pos2(origin.x + (1.0 - slide) * width, origin.y);
+            let details_height = page(ui, "details", at, clip, slide > 0.0, |ui| {
+                details_page(ui, &palette, battery, animate, actions);
+            });
+            height = height.max(details_height);
+        }
+        ui.allocate_space(Vec2::new(width, height));
+    });
+    content.response.rect.size()
 }
 
 /// Lays out a page at `min`, clipped to `clip`, and returns its height. An invisible page is only measured.
