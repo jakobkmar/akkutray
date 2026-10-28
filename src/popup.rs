@@ -14,10 +14,11 @@ use eframe::egui::{
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
 const WIDTH: f32 = 340.0;
 /// Minimum gap between the popup and the edges of the screen's work area, in points.
-pub const SCREEN_MARGIN: f32 = 12.0;
+const SCREEN_MARGIN: f32 = 12.0;
 /// Level at or below which a battery counts as low, shared with the tray's warnings.
 pub const LOW_PERCENT: u8 = 20;
 const MEDIUM_PERCENT: u8 = 50;
@@ -54,16 +55,6 @@ pub fn level_color(percent: u8) -> [u8; 3] {
 
 /// Opens the popup next to the tray icon at `anchor` and blocks until it is closed.
 pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
-    let icon = (
-        (anchor.position.x + f64::from(anchor.size.width) / 2.0) as i32,
-        (anchor.position.y + f64::from(anchor.size.height) / 2.0) as i32,
-    );
-    if let Some(dock) = platform::popup::Dock::new(icon) {
-        let ctx = egui::Context::default();
-        let mut popup = Popup::new(&ctx, shared, icon);
-        dock.run(&ctx, background(&ctx.global_style().visuals), |ui| popup.draw(ui));
-        return Ok(());
-    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("akkutray")
@@ -77,10 +68,7 @@ pub fn show(shared: &Shared, anchor: tray_icon::Rect) -> eframe::Result {
     eframe::run_native(
         "akkutray",
         options,
-        Box::new(|cc| {
-            platform::popup::round_corners(cc);
-            Ok(Box::new(Popup::new(&cc.egui_ctx, shared, icon)))
-        }),
+        Box::new(|cc| Ok(Box::new(Popup::new(cc, shared, anchor)))),
     )
 }
 
@@ -106,23 +94,27 @@ enum Action {
 }
 
 impl<'a> Popup<'a> {
-    /// Sets up the popup for the tray icon whose middle is at `icon`, in physical pixels.
-    fn new(ctx: &egui::Context, shared: &'a Shared, icon: (i32, i32)) -> Self {
-        ctx.set_fonts(fonts());
-        ctx.send_viewport_cmd(ViewportCommand::Focus);
+    fn new(cc: &eframe::CreationContext, shared: &'a Shared, anchor: tray_icon::Rect) -> Self {
+        cc.egui_ctx.set_fonts(fonts());
+        cc.egui_ctx.send_viewport_cmd(ViewportCommand::Focus);
+        platform::popup::round_corners(cc);
         if let Some(theme) = platform::popup::theme() {
-            ctx.set_theme(theme);
+            cc.egui_ctx.set_theme(theme);
         }
         let animate = platform::popup::animations_enabled();
-        ctx.all_styles_mut(|style| {
+        cc.egui_ctx.all_styles_mut(|style| {
             // Clicking a card opens its details, so its texts shouldn't take the click to select themselves.
             style.interaction.selectable_labels = false;
             if !animate {
                 style.animation_time = 0.0;
             }
         });
-        shared.lock().popup = Some(ctx.clone());
+        shared.lock().popup = Some(cc.egui_ctx.clone());
         shared.refresh();
+        let icon = (
+            (anchor.position.x + f64::from(anchor.size.width) / 2.0) as i32,
+            (anchor.position.y + f64::from(anchor.size.height) / 2.0) as i32,
+        );
         Self {
             shared,
             icon,
@@ -163,28 +155,40 @@ impl<'a> Popup<'a> {
             // egui takes points, which it turns back into these pixels.
             let points = |pixels: i32| pixels as f32 / pixels_per_point;
             ctx.send_viewport_cmd(ViewportCommand::OuterPosition(pos2(points(bounds.x), points(bounds.y))));
-            ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(points(width), points(height))));
+            platform::popup::resize(ctx, Vec2::new(points(width), points(height)));
         }
     }
 }
 
 impl eframe::App for Popup<'_> {
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        background(visuals)
+        Palette::new(visuals.dark_mode).background.to_normalized_gamma_f32()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.draw(ui);
-    }
-}
-
-impl Popup<'_> {
-    fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let focused = ctx.input(|input| input.viewport().focused);
         self.had_focus |= focused == Some(true);
         if self.had_focus && focused == Some(false) {
             ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+        // Some Wayland desktops don't focus the popup, which then misses clicks elsewhere and may end up behind other
+        // windows. Until it has the focus, a click on the tray icon closes it, so it can't block the tray.
+        if !self.had_focus {
+            let clicked = TrayIconEvent::receiver().try_iter().any(|event| {
+                matches!(
+                    event,
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }
+                )
+            });
+            if clicked {
+                ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
+            ctx.request_repaint_after(Duration::from_millis(250));
         }
         // Escape leads back from the details page first.
         if ctx.input(|input| input.key_pressed(Key::Escape)) {
@@ -242,10 +246,8 @@ impl Popup<'_> {
         // Keeps "Updated … ago" current.
         ctx.request_repaint_after(Duration::from_secs(60));
     }
-}
 
-impl Drop for Popup<'_> {
-    fn drop(&mut self) {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shared.lock().popup = None;
     }
 }
@@ -882,10 +884,6 @@ impl Palette {
             }
         }
     }
-}
-
-fn background(visuals: &egui::Visuals) -> [f32; 4] {
-    Palette::new(visuals.dark_mode).background.to_normalized_gamma_f32()
 }
 
 fn semibold() -> FontFamily {

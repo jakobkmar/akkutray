@@ -65,22 +65,14 @@ pub fn animations_enabled() -> bool {
     enabled != 0
 }
 
+/// Resizes the popup to `size`, in points.
+pub fn resize(ctx: &egui::Context, size: egui::Vec2) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+}
+
 /// The light or dark mode, which winit already reads from Windows.
 pub fn theme() -> Option<egui::Theme> {
     None
-}
-
-/// A popup docked to the taskbar by the system, which Windows doesn't offer. The popup places itself instead.
-pub enum Dock {}
-
-impl Dock {
-    pub fn new(_icon: (i32, i32)) -> Option<Self> {
-        None
-    }
-
-    pub fn run(self, _ctx: &egui::Context, _background: [f32; 4], _ui: impl FnMut(&mut egui::Ui)) {
-        match self {}
-    }
 }
 
 /// Reads a font of the Windows UI.
